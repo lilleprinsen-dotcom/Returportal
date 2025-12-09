@@ -345,13 +345,17 @@ final class LP_Cargonizer_Returns {
         wp_enqueue_style('lp-cargo-returns');
         $css = <<<CSS
 :root{--lp-green:#6FBE3A;}
-.lp-wrap{max-width:860px;margin:0 auto}
+.lp-wrap{max-width:900px;margin:0 auto;padding:0 14px}
 .lp-step{border:1px solid #e5e7eb;padding:16px;margin:14px 0;border-radius:12px;background:#fff;overflow:visible}
 .lp-grid{display:grid;gap:12px}
 .lp-two{grid-template-columns:1fr 1fr}
 @media(max-width:720px){.lp-two{grid-template-columns:1fr}}
-.lp-btn{background:var(--lp-green);color:#fff;border:none;padding:12px 16px;border-radius:10px;cursor:pointer;font-weight:700}
+.lp-span-all{grid-column:1/-1}
+.lp-btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.lp-btn{background:var(--lp-green);color:#fff;border:none;padding:12px 16px;border-radius:10px;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
 .lp-btn[disabled]{opacity:.55;cursor:not-allowed}
+.lp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -8px;padding:0 8px}
+.lp-table-responsive{min-width:520px;width:100%}
 .lp-input,.lp-select,textarea{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;font-size:16px;background:#fff}
 .lp-input:focus,.lp-select:focus,textarea:focus{outline:none;border-color:var(--lp-green);box-shadow:0 0 0 3px rgba(111,190,58,.15)}
 .lp-label{font-weight:700;margin-bottom:6px;display:block}
@@ -375,6 +379,7 @@ final class LP_Cargonizer_Returns {
 .lp-sm-img{display:flex;gap:10px;align-items:center}
 .lp-sm-img img{width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid #e5e7eb;background:#fff}
 .lp-badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;border:1px solid #bfdbfe;background:#eff6ff;vertical-align:middle;margin-left:8px}
+@media(max-width:540px){.lp-btn-row{flex-direction:column}.lp-btn{width:100%}.lp-table-wrap{margin:0;padding:0}}
 CSS;
         $css = str_replace('%BGCOL%', esc_attr(get_option(self::OPT_FS_BANNER_COLOR,'#0ea5e9')), $css);
         wp_add_inline_style('lp-cargo-returns',$css);
@@ -768,7 +773,7 @@ CSS;
             echo '<label class="lp-label" for="email">E-post</label>';
             echo '<input class="lp-input" id="email" type="email" name="email" placeholder="din@epost.no" required>';
             echo '<input type="text" name="company_website" value="" style="position:absolute;left:-9999px" tabindex="-1" aria-hidden="true">';
-            echo '<div style="grid-column:1/-1;margin-top:8px"><button class="lp-btn" type="submit">Fortsett</button></div>';
+            echo '<div class="lp-btn-row lp-span-all"><button class="lp-btn" type="submit">Fortsett</button></div>';
             echo '</form></div>';
         }
 
@@ -784,7 +789,7 @@ CSS;
                 echo $nonce;
                 echo '<input type="hidden" name="lp_step" value="2">';
                 echo '<input type="hidden" name="lp_state" value="'.$state_json.'">';
-                echo '<table class="shop_table"><thead><tr><th>Produkt</th><th>Kjøpt</th><th>Tilgjengelig</th><th>Retur</th></tr></thead><tbody>';
+                echo '<div class="lp-table-wrap"><table class="shop_table lp-table-responsive"><thead><tr><th>Produkt</th><th>Kjøpt</th><th>Tilgjengelig</th><th>Retur</th></tr></thead><tbody>';
                 foreach ($order->get_items() as $item_id=>$item) {
                     $qty_total = (int)$item->get_quantity();
                     $already = (int)($prev[$item_id] ?? 0);
@@ -805,8 +810,8 @@ CSS;
                     echo '<td>'.($max>0 ? '<input class="lp-input" type="number" name="qty['.intval($item_id).']" min="0" max="'.intval($max).'" value="0" style="width:100px">' : '<span class="lp-muted">Allerede returnert</span>').'</td>';
                     echo '</tr>';
                 }
-                echo '</tbody></table>';
-                echo '<div style="display:flex;gap:8px;margin-top:10px">';
+                echo '</tbody></table></div>';
+                echo '<div class="lp-btn-row">';
                 echo '<button class="lp-btn" type="submit" name="lp_back" value="1">Tilbake</button>';
                 echo '<button class="lp-btn" type="submit">Fortsett</button>';
                 echo '</div></form>';
@@ -889,10 +894,10 @@ CSS;
                   </div>';
 
             // Note
-            echo '<div style="grid-column:1/-1"><span class="lp-label">Melding (valgfritt)</span><textarea class="lp-input" name="return_note" rows="3">'.esc_textarea($state['return_note']).'</textarea></div>';
+            echo '<div class="lp-span-all"><span class="lp-label">Melding (valgfritt)</span><textarea class="lp-input" name="return_note" rows="3">'.esc_textarea($state['return_note']).'</textarea></div>';
 
             // Buttons
-            echo '<div style="grid-column:1/-1;display:flex;gap:8px;margin-top:6px">';
+            echo '<div class="lp-btn-row lp-span-all">';
             echo '<button class="lp-btn" type="submit" name="lp_back" value="1">Tilbake</button>';
             echo '<button class="lp-btn" type="submit">Fortsett</button>';
             echo '</div>';
@@ -1185,19 +1190,7 @@ CSS;
         return $last ?: '';
     }
 
-    private function get_transport_agreements($filter_allowed=false){
-        if ($this->agreements_cache_runtime !== null) {
-            $all = $this->agreements_cache_runtime;
-            return $filter_allowed ? $this->filter_allowed_products($all) : $all;
-        }
-        $cache_key = 'lp_cargo_agreements_cache_'.md5((string)get_option(self::OPT_SENDER_ID,'').home_url('/'));
-        $xml = get_transient($cache_key);
-        if (!$xml) {
-            $xml = $this->api_client->http('GET','transport_agreements.xml');
-            if (!is_wp_error($xml)) set_transient($cache_key, $xml, 30 * MINUTE_IN_SECONDS);
-        }
-        if (is_wp_error($xml)) return $xml;
-
+    private function parse_agreements_response($xml){
         $doc = $this->api_client->load_xml($xml);
         if (is_wp_error($doc)) return $doc;
 
@@ -1218,8 +1211,38 @@ CSS;
             }
             $out[]=['id'=>$ag_id,'carrier_name'=>$carrier_name,'products'=>$prods];
         }
-        $this->agreements_cache_runtime = $out;
-        return $filter_allowed ? $this->filter_allowed_products($out) : $out;
+
+        return $out;
+    }
+
+    private function get_transport_agreements($filter_allowed=false){
+        if ($this->agreements_cache_runtime !== null) {
+            $all = $this->agreements_cache_runtime;
+            return $filter_allowed ? $this->filter_allowed_products($all) : $all;
+        }
+
+        $cache_key = 'lp_cargo_agreements_cache_'.md5((string)get_option(self::OPT_SENDER_ID,'').home_url('/'));
+        $cached = get_transient($cache_key);
+
+        if (is_array($cached)) {
+            $this->agreements_cache_runtime = $cached;
+            return $filter_allowed ? $this->filter_allowed_products($cached) : $cached;
+        }
+
+        $xml = $cached;
+        if (!$xml) {
+            $xml = $this->api_client->http('GET','transport_agreements.xml');
+        }
+
+        if (is_wp_error($xml)) return $xml;
+
+        $parsed = $this->parse_agreements_response($xml);
+        if (is_wp_error($parsed)) return $parsed;
+
+        set_transient($cache_key, $parsed, 30 * MINUTE_IN_SECONDS);
+        $this->agreements_cache_runtime = $parsed;
+
+        return $filter_allowed ? $this->filter_allowed_products($parsed) : $parsed;
     }
 
     private function filter_allowed_products(array $all){
