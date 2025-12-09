@@ -668,14 +668,12 @@ CSS;
         check_ajax_referer(self::NONCE, '_wpnonce');
 
         // Les usavede verdier fra request
-        $keyReq    = sanitize_text_field($_POST['key'] ?? '');
-        $senderReq = sanitize_text_field($_POST['sender'] ?? '');
+        $keyReq    = trim(sanitize_text_field($_POST['key'] ?? ''));
+        $senderReq = trim(sanitize_text_field($_POST['sender'] ?? ''));
 
-        $key    = $keyReq    ?: get_option(self::OPT_API_KEY,'');
-        $sender = $senderReq ?: get_option(self::OPT_SENDER_ID,'');
-
-        if (!$key || !$sender) {
-            wp_send_json_error(['msg'=>'Mangler API-nøkkel eller Avsender-ID i innstillinger.'], 400);
+        $creds = $this->require_api_credentials($keyReq ?: null, $senderReq ?: null);
+        if (is_wp_error($creds)) {
+            wp_send_json_error(['msg'=>$creds->get_error_message()], 400);
         }
 
         if (defined('WP_HTTP_BLOCK_EXTERNAL') && WP_HTTP_BLOCK_EXTERNAL) {
@@ -688,7 +686,7 @@ CSS;
         $url = rtrim(self::ENDPOINT_BASE,'/').'/transport_agreements.xml';
         $args = [
             'method'  => 'GET',
-            'headers' => $this->api_headers('application/xml', $key, $sender),
+            'headers' => $this->api_headers('application/xml', $creds['key'], $creds['sender']),
             'timeout' => 20,
             'redirection' => 2,
         ];
@@ -1459,9 +1457,23 @@ CSS;
 
     /* ===================== API helpers & creation ===================== */
 
+    private function require_api_credentials($override_key = null, $override_sender = null) {
+        $key    = trim((string)($override_key    ?? (defined('LP_CARGO_API_KEY') ? LP_CARGO_API_KEY : get_option(self::OPT_API_KEY, ''))));
+        $sender = trim((string)($override_sender ?? (defined('LP_CARGO_SENDER_ID') ? LP_CARGO_SENDER_ID : get_option(self::OPT_SENDER_ID, ''))));
+
+        if ($key === '' || $sender === '') {
+            $msg_admin = __('Cargonizer API-nøkkel og Avsender-ID må fylles ut i innstillinger.', 'lp-cargo');
+            return current_user_can('manage_woocommerce')
+                ? new WP_Error('missing_credentials', $msg_admin)
+                : new WP_Error('cargonizer_http', __('Klarte ikke å kontakte transportør. Prøv igjen senere.', 'lp-cargo'));
+        }
+
+        return ['key' => $key, 'sender' => $sender];
+    }
+
     private function api_headers($accept='application/xml', $override_key=null, $override_sender=null){
-        $key    = $override_key   ?: (defined('LP_CARGO_API_KEY') ? LP_CARGO_API_KEY : get_option(self::OPT_API_KEY,''));
-        $sender = $override_sender?: (defined('LP_CARGO_SENDER_ID') ? LP_CARGO_SENDER_ID : get_option(self::OPT_SENDER_ID,''));
+        $key    = trim((string)$override_key);
+        $sender = trim((string)$override_sender);
         $h = [
             'X-Cargonizer-Key'    => $key,
             'X-Cargonizer-Sender' => $sender,
@@ -1501,9 +1513,12 @@ CSS;
             }
         }
 
+        $creds = $this->require_api_credentials();
+        if (is_wp_error($creds)) return $creds;
+
         $args = [
             'method'      => $method,
-            'headers'     => $this->api_headers($accept),
+            'headers'     => $this->api_headers($accept, $creds['key'], $creds['sender']),
             'timeout'     => 45,
             'redirection' => 3,
             'body'        => ($method === 'GET' ? null : $body),
