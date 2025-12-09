@@ -146,6 +146,7 @@ final class LP_Cargonizer_Returns {
         if (is_admin()) {
             $this->settings = new LP_Cargonizer_Settings($this);
             add_action('wp_ajax_lp_cargo_fetch_agreements', [$this,'ajax_fetch_agreements']);
+            add_action('wp_ajax_lp_cargo_refresh_agreements', [$this,'ajax_refresh_agreements']);
             add_action('wp_ajax_lp_cargo_save_allowed',     [$this,'ajax_save_allowed']);   // legacy
             add_action('wp_ajax_lp_cargo_save_services',    [$this,'ajax_save_services']);  // legacy
             add_action('wp_ajax_lp_cargo_save_all',         [$this,'ajax_save_all']);       // bulk save
@@ -237,7 +238,20 @@ final class LP_Cargonizer_Returns {
     public function ajax_fetch_agreements(){
         $this->check_nonce();
         $agreements = $this->get_transport_agreements(false);
-        if (is_wp_error($agreements)) wp_die('<div class="notice notice-error"><p>'.esc_html($agreements->get_error_message()).'</p></div>');
+        echo $this->render_agreements_markup($agreements);
+        wp_die();
+    }
+
+    public function ajax_refresh_agreements(){
+        $this->check_nonce();
+        $this->clear_agreements_cache();
+        $agreements = $this->get_transport_agreements(false, true);
+        echo $this->render_agreements_markup($agreements);
+        wp_die();
+    }
+
+    private function render_agreements_markup($agreements){
+        if (is_wp_error($agreements)) return '<div class="notice notice-error"><p>'.esc_html($agreements->get_error_message()).'</p></div>';
         $allowed  = (array) get_option(self::OPT_ALLOWED, []);
         $defaults = (array) get_option(self::OPT_DEFAULT_SERV, []);
 
@@ -245,6 +259,7 @@ final class LP_Cargonizer_Returns {
 
         echo '<div class="lp-agree-actions" style="margin:0 0 8px">
         <button type="button" class="button button-primary lp-cargo-agree-save">Lagre valg</button>
+        <button type="button" class="button lp-cargo-agree-refresh" style="margin-left:8px">Oppdater avtaler</button>
         <span class="lp-cargo-agree-status lp-small" style="margin-left:8px" aria-live="polite"></span>
       </div>';
 
@@ -272,10 +287,11 @@ final class LP_Cargonizer_Returns {
 
         echo '<div class="lp-agree-actions" style="margin:8px 0 0">
         <button type="button" class="button button-primary lp-cargo-agree-save">Lagre valg</button>
+        <button type="button" class="button lp-cargo-agree-refresh" style="margin-left:8px">Oppdater avtaler</button>
         <span class="lp-cargo-agree-status lp-small" style="margin-left:8px" aria-live="polite"></span>
       </div>';
 
-        wp_die(ob_get_clean());
+        return ob_get_clean();
     }
 
     // Legacy single-change endpoints
@@ -1181,15 +1197,6 @@ CSS;
         return $out ? implode("\n", $out) : "–";
     }
 
-    private function extract_tracking_number($tracking_url){
-        if (!$tracking_url) return '';
-        $path = parse_url($tracking_url, PHP_URL_PATH);
-        if (!$path) return '';
-        $parts = array_values(array_filter(explode('/', $path)));
-        $last = end($parts);
-        return $last ?: '';
-    }
-
     private function parse_agreements_response($xml){
         $doc = $this->api_client->load_xml($xml);
         if (is_wp_error($doc)) return $doc;
@@ -1215,14 +1222,29 @@ CSS;
         return $out;
     }
 
-    private function get_transport_agreements($filter_allowed=false){
-        if ($this->agreements_cache_runtime !== null) {
+    private function agreements_cache_key(){
+        return 'lp_cargo_agreements_cache_'.md5((string)get_option(self::OPT_SENDER_ID,'').home_url('/'));
+    }
+
+    private function agreements_cache_ttl(){
+        $minutes = (int) apply_filters('lp_cargo_agreements_cache_minutes', 30);
+        $minutes = max(10, min(60, $minutes));
+        return $minutes * MINUTE_IN_SECONDS;
+    }
+
+    private function clear_agreements_cache(){
+        $this->agreements_cache_runtime = null;
+        delete_transient($this->agreements_cache_key());
+    }
+
+    private function get_transport_agreements($filter_allowed=false, $force_refresh=false){
+        if ($this->agreements_cache_runtime !== null && !$force_refresh) {
             $all = $this->agreements_cache_runtime;
             return $filter_allowed ? $this->filter_allowed_products($all) : $all;
         }
 
-        $cache_key = 'lp_cargo_agreements_cache_'.md5((string)get_option(self::OPT_SENDER_ID,'').home_url('/'));
-        $cached = get_transient($cache_key);
+        $cache_key = $this->agreements_cache_key();
+        $cached = $force_refresh ? null : get_transient($cache_key);
 
         if (is_array($cached)) {
             $this->agreements_cache_runtime = $cached;
@@ -1239,7 +1261,7 @@ CSS;
         $parsed = $this->parse_agreements_response($xml);
         if (is_wp_error($parsed)) return $parsed;
 
-        set_transient($cache_key, $parsed, 30 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $parsed, $this->agreements_cache_ttl());
         $this->agreements_cache_runtime = $parsed;
 
         return $filter_allowed ? $this->filter_allowed_products($parsed) : $parsed;
@@ -1256,6 +1278,26 @@ CSS;
             $filtered[] = $agCopy;
         }
         return $filtered;
+    }
+
+    private function build_party_block($tag, array $data){
+        $fields = [
+            'name','company','address1','address2','postcode','city','country','email','mobile'
+        ];
+        $parts = [];
+        foreach ($fields as $field) {
+            if (empty($data[$field])) continue;
+            $parts[] = sprintf('<%1$s>%2$s</%1$s>', $field, esc_xml((string)$data[$field]));
+        }
+        return '<'.$tag.'>'.implode('', $parts).'</'.$tag.'>';
+    }
+
+    private function build_parts_xml(array $parts){
+        $segments = [];
+        foreach ($parts as $tag => $data) {
+            $segments[] = $this->build_party_block($tag, $data);
+        }
+        return '<parts>'.implode('', $segments).'</parts>';
     }
 
     private function create_consignment(array $state){
@@ -1329,21 +1371,30 @@ CSS;
         }
         $services_for_product = array_values(array_intersect($services_for_product, $avail));
 
-        if ($swap) {
-            // Omvendt: butikk som consignor (kun ved spesielle krav)
-            $partsXml = sprintf(
-                '<parts><consignor><name>%s</name><address1>%s</address1><address2>%s</address2><postcode>%s</postcode><city>%s</city><country>%s</country></consignor><consignee><name>%s</name>%s<address1>%s</address1><address2>%s</address2><postcode>%s</postcode><city>%s</city><country>%s</country><email>%s</email><mobile>%s</mobile></consignee></parts>',
-                esc_xml($store_name),esc_xml($store_addr1),esc_xml($store_addr2),esc_xml($store_post),esc_xml($store_city),esc_xml($store_country),
-                esc_xml($cust['name']), ($cust['company']?'<company>'.esc_xml($cust['company']).'</company>':''), esc_xml($cust['address1']),esc_xml($cust['address2']),esc_xml($cust['postcode']),esc_xml($cust['city']),esc_xml($cust['country']),esc_xml($cust['email']),esc_xml($cust['phone'])
-            );
-        } else {
-            // Standard retur: kunde (consignor) → butikk (consignee)
-            $partsXml = sprintf(
-                '<parts><consignor><name>%s</name>%s<address1>%s</address1><address2>%s</address2><postcode>%s</postcode><city>%s</city><country>%s</country><email>%s</email><mobile>%s</mobile></consignor><consignee><name>%s</name><address1>%s</address1><address2>%s</address2><postcode>%s</postcode><city>%s</city><country>%s</country></consignee></parts>',
-                esc_xml($cust['name']), ($cust['company']?'<company>'.esc_xml($cust['company']).'</company>':''), esc_xml($cust['address1']),esc_xml($cust['address2']),esc_xml($cust['postcode']),esc_xml($cust['city']),esc_xml($cust['country']),esc_xml($cust['email']),esc_xml($cust['phone']),
-                esc_xml($store_name),esc_xml($store_addr1),esc_xml($store_addr2),esc_xml($store_post),esc_xml($store_city),esc_xml($store_country)
-            );
-        }
+        $customer_party = [
+            'name'     => $cust['name'],
+            'company'  => $cust['company'],
+            'address1' => $cust['address1'],
+            'address2' => $cust['address2'],
+            'postcode' => $cust['postcode'],
+            'city'     => $cust['city'],
+            'country'  => $cust['country'],
+            'email'    => $cust['email'],
+            'mobile'   => $cust['phone'],
+        ];
+        $store_party = [
+            'name'     => $store_name,
+            'address1' => $store_addr1,
+            'address2' => $store_addr2,
+            'postcode' => $store_post,
+            'city'     => $store_city,
+            'country'  => $store_country,
+        ];
+
+        $partsXml = $this->build_parts_xml([
+            'consignor' => $swap ? $store_party : $customer_party,
+            'consignee' => $swap ? $customer_party : $store_party,
+        ]);
 
         $itemsXml = sprintf('<items><item type="package" amount="1" weight="%s" /></items>', esc_xml(number_format($weight_total,2,'.','')));
 
@@ -2080,9 +2131,8 @@ CSS;
         }
     }
     public function cron_warm_agreements(){
-        $cache_key = 'lp_cargo_agreements_cache_'.md5((string)get_option(self::OPT_SENDER_ID,'').home_url('/'));
-        delete_transient($cache_key);
-        $this->get_transport_agreements(false);
+        $this->clear_agreements_cache();
+        $this->get_transport_agreements(false, true);
     }
 
     /** ✅ Alltid aktiv hook: skriv returer til DB-tabellen */
