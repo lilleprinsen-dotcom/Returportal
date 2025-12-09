@@ -486,7 +486,7 @@ CSS;
         if ($step === 999 && !empty($state['_done'])) {
             if ($state['parcel_size']==='oversize') return $this->view_oversize_success($state['email']);
             $order = !empty($state['order_id']) ? wc_get_order($state['order_id']) : null;
-            return $this->view_success($state['email'], ($state['_success_label']??''), (int)($state['_valid_days']??$label_valid_days), $order);
+            return $this->view_success($state['email'], ($state['_success_label']??''), (int)($state['_valid_days']??$label_valid_days), $order, $state['lines']);
         }
 
         // POST handling
@@ -658,15 +658,24 @@ CSS;
                         $first = $order->get_billing_first_name();
                         $refundLabel = $this->refund_label($state['refund_method']);
                         $lines_text = $this->format_return_lines($order, $state['lines']);
-                        $msg = "Forespørsel om retur (overdimensjonert)\nOrdre: #".$order->get_id()."\nKunde: ".$first.' '.$order->get_billing_last_name()." <".$order->get_billing_email().">\nTelefon: ".$order->get_billing_phone()."\nAdresse: ".$order->get_billing_address_1()." ".$order->get_billing_postcode()." ".$order->get_billing_city()."\nProdukter:\n".$lines_text."\nÅrsak: ".($reason?:'-')."\nMelding: ".($state['return_note']?:'-')."\nBehandling: ".$refundLabel."\n";
+                        $estimated = $this->estimate_refund_total($order, $state['lines']);
+                        $estimated_text = ($estimated['raw'] > 0) ? "Estimert refusjon: ".$estimated['formatted']."\n" : '';
+                        $msg = "Forespørsel om retur (overdimensjonert)\nOrdre: #".$order->get_id()."\nKunde: ".$first.' '.$order->get_billing_last_name()." <".$order->get_billing_email().">\nTelefon: ".$order->get_billing_phone()."\nAdresse: ".$order->get_billing_address_1()." ".$order->get_billing_postcode()." ".$order->get_billing_city()."\nProdukter:\n".$lines_text."\nÅrsak: ".($reason?:'-')."\nMelding: ".($state['return_note']?:'-')."\nBehandling: ".$refundLabel."\n".$estimated_text;
                         $headers = ['Content-Type: text/plain; charset=UTF-8','From: '.get_bloginfo('name').' <kundeservice@'.wp_parse_url(home_url(), PHP_URL_HOST).'>'];
                         $toSupport = get_option(self::OPT_SUPPORT_EMAIL, get_option('admin_email'));
                         wp_mail($toSupport,'Retur – overdimensjonert forespørsel (ordre #'.$order->get_id().')',$msg,$headers);
 
                         // Meta
-                        $order->add_order_note("Retur forespurt (overdimensjonert).\nProdukter:\n".$lines_text."\nÅrsak: ".($reason?:'-')."\nReturmelding: ".$state['return_note']."\nBehandling: ".$refundLabel, false, true);
+                        $note  = "Retur forespurt (overdimensjonert).\n";
+                        if ($estimated['raw'] > 0) $note .= "Estimert refusjon (varer): ".$estimated['formatted']."\n";
+                        $note .= "Produkter:\n".$lines_text."\n";
+                        $note .= "Årsak: ".($reason?:'-')."\n";
+                        $note .= "Returmelding: ".$state['return_note']."\n";
+                        $note .= "Behandling: ".$refundLabel;
+                        $order->add_order_note($note, false, true);
                         $order->update_meta_data(self::META_REFUND_METHOD, $state['refund_method']);
                         $order->update_meta_data(self::META_PARCEL_SIZE, 'oversize');
+                        if ($estimated['raw'] > 0) $order->update_meta_data('_lp_estimated_refund', $estimated['raw']);
                         $order->update_meta_data('_lp_carrier_group', $state['carrier_group']); // lagre valgt transportør
                         if (!empty($reason)) $order->update_meta_data(self::META_RETURN_REASON, $reason);
                         $order->update_meta_data(self::META_CREATED_TS, time());
@@ -691,6 +700,7 @@ CSS;
                           'parcel_size'=>$state['parcel_size'],
                           'label_url'=>'',
                           'tracking_url'=>'',
+                          'notes' => ($estimated['raw'] > 0) ? ('Estimert refusjon: '.$estimated['formatted']) : '',
                           'fs_nonce'=>$this->last_granted_fs['nonce'] ?? '',
                         ]);
                     }
@@ -723,20 +733,23 @@ CSS;
                             if (!empty($reason)) $order->update_meta_data(self::META_RETURN_REASON, $reason);
                             $order->update_meta_data(self::META_CREATED_TS, time());
 
+                            $estimated = $this->estimate_refund_total($order, $state['lines']);
                             $refundLabel = $this->refund_label($state['refund_method']);
                             $note  = "Retur opprettet.\n";
                             if ($tracking) $note .= "Sporing: ".$tracking."\n";
                             if ($label_url) $note .= "Etikett: ".$label_url."\n";
                             $note .= "Tjeneste: ".$service_label."\n";
                             $note .= "Returavgift (anslag): kr ".$fee."\n";
+                            if ($estimated['raw'] > 0) $note .= "Estimert refusjon (varer): ".$estimated['formatted']."\n";
                             $note .= "Produkter:\n".$lines_text."\n";
                             $note .= "Årsak: ".($reason?:'-')."\n";
                             if (!empty($state['return_note'])) $note .= "Returmelding: ".$state['return_note']."\n";
                             $note .= "Behandling: ".$refundLabel."\n";
                             $note .= "Etiketten er gyldig i ".$label_valid_days." dager fra i dag.";
                             $order->add_order_note($note, false, true);
+                            if ($estimated['raw'] > 0) $order->update_meta_data('_lp_estimated_refund', $estimated['raw']);
                             // E-post
-                            $this->send_customer_confirmation($order, $service_label, 'kr '.$fee, $lines_text, $res['label_url'] ?? '', $res['public_label_url'] ?? '', $tracking, $label_valid_days, $refundLabel);
+                            $this->send_customer_confirmation($order, $service_label, 'kr '.$fee, $lines_text, $res['label_url'] ?? '', $res['public_label_url'] ?? '', $tracking, $label_valid_days, $refundLabel, $state['lines']);
                             // Lock & qty
                             $order->update_meta_data(self::META_LOCKED,'1');
                             $prev = (array) $order->get_meta(self::META_RETURNED_QTY);
@@ -746,17 +759,18 @@ CSS;
                             // Bonus (cookie/IP)
                             $this->grant_freeship_bonus('', 0);
                             // Logg
-                            do_action('lp_cargo_return_created', [
-                              'created'=>current_time('mysql'),
-                              'order_id'=>$order->get_id(),
-                              'email'=>$order->get_billing_email(),
-                              'reason'=>$reason,
-                              'carrier'=>$state['carrier_group'],
-                              'parcel_size'=>$state['parcel_size'],
-                              'label_url'=>$label_url,
-                              'tracking_url'=>$tracking,
-                              'fs_nonce'=>$this->last_granted_fs['nonce'] ?? '',
-                            ]);
+                        do_action('lp_cargo_return_created', [
+                          'created'=>current_time('mysql'),
+                          'order_id'=>$order->get_id(),
+                          'email'=>$order->get_billing_email(),
+                          'reason'=>$reason,
+                          'carrier'=>$state['carrier_group'],
+                          'parcel_size'=>$state['parcel_size'],
+                          'label_url'=>$label_url,
+                          'tracking_url'=>$tracking,
+                          'fs_nonce'=>$this->last_granted_fs['nonce'] ?? '',
+                          'notes' => ($estimated['raw'] > 0) ? ('Estimert refusjon: '.$estimated['formatted']) : '',
+                        ]);
                         }
                         $state['_done']=1; $state['_success_label']=$label_url; $state['_valid_days']=$label_valid_days;
                         $token = $this->prg_save_state($state);
@@ -1067,12 +1081,38 @@ CSS;
         return ($method === 'original') ? 'Tilbakebetaling til opprinnelig betalingsmåte' : 'Gavekort / butikkreditt';
     }
 
-    private function view_success($email, $label_url, $valid_days, $order){
+    private function estimate_refund_total($order, array $lines){
+        $total = 0.0;
+        if (!$order || !method_exists($order, 'get_items')) return ['raw'=>0.0,'formatted'=>''];
+        foreach ($order->get_items() as $item_id => $item) {
+            if (empty($lines[$item_id])) continue;
+            $qty_total = (int) $item->get_quantity();
+            if ($qty_total <= 0) continue;
+            $per_unit = (((float)$item->get_total()) + ((float)$item->get_total_tax())) / $qty_total;
+            $qty_ret = max(0, min($qty_total, (int)$lines[$item_id]));
+            $total  += $per_unit * $qty_ret;
+        }
+
+        $decimals = function_exists('wc_get_price_decimals') ? wc_get_price_decimals() : 2;
+        $raw = (float) wc_format_decimal($total, $decimals);
+        $formatted = function_exists('wc_price') ? wc_price($raw, ['currency'=>$order->get_currency()]) : number_format($raw, $decimals);
+        return ['raw'=>$raw,'formatted'=>$formatted];
+    }
+
+    private function view_success($email, $label_url, $valid_days, $order, array $lines = []){
         $btn = $label_url ? '<p><a target="_blank" rel="noopener" class="lp-btn" href="'.esc_url($label_url).'">Last ned etikett (PDF)</a></p>' : '';
         $order_id = $order ? $order->get_id() : 0;
         $token = $order ? $this->issue_signed_token($order_id, $order->get_billing_email(), max(HOUR_IN_SECONDS, (int)get_option(self::OPT_LABEL_VALID_DAYS,14)*DAY_IN_SECONDS)) : '';
         $regen_btn = $order_id ? '<p><button class="lp-btn" id="lp-regen">Forny etikettlenke</button><input type="hidden" id="lp_regen_token" value="'.esc_attr($token).'"></p>' : '';
         $valid_note = '<p class="lp-help">Etiketten er gyldig i '.$valid_days.' dager. Trenger du ny lenke, klikk «Forny etikettlenke».</p>';
+
+        $estimated_html = '';
+        if ($order) {
+            $estimated = $this->estimate_refund_total($order, $lines);
+            if ($estimated['raw'] > 0) {
+                $estimated_html = '<p><strong>Estimert refusjon (varer):</strong> '.$this->h($estimated['formatted']).'. Endelig beløp beregnes etter mottak og kontroll.</p>';
+            }
+        }
 
         $qr_success = '';
         if ($order && $order->get_meta('_lp_carrier_group') === 'postnord') {
@@ -1090,7 +1130,7 @@ CSS;
             $js = '<script>(function(){const btn=document.getElementById("lp-regen"); if(!btn) return; btn.addEventListener("click", async (e)=>{e.preventDefault(); btn.disabled=true; btn.textContent="Fornyer..."; try{const fd=new FormData(); fd.append("action","lp_cargo_regen_label"); fd.append("order_id","'.intval($order_id).'"); fd.append("token",document.getElementById("lp_regen_token").value); const r=await fetch("'.esc_url(admin_url('admin-ajax.php')).'", {method:"POST", body:fd}); const j=await r.json(); if(j&&j.success&&j.data&&j.data.url){ window.location.href = j.data.url; } else { alert("Kunne ikke fornye etikett."); btn.disabled=false; btn.textContent="Forny etikettlenke"; } }catch(err){ alert("Noe gikk galt."); btn.disabled=false; btn.textContent="Forny etikettlenke"; } });})();</script>';
         }
 
-        return '<div class="lp-wrap"><div class="lp-progress"><span style="width:100%"></span></div><div class="lp-step"><h3>Returetikett er opprettet</h3><p>Vi har sendt etiketten til <strong>'.esc_html($email).'</strong>.</p>'.$btn.$valid_note.$qr_success.$regen_btn.'</div>'.$fs_html.'</div>'.$js;
+        return '<div class="lp-wrap"><div class="lp-progress"><span style="width:100%"></span></div><div class="lp-step"><h3>Returetikett er opprettet</h3><p>Vi har sendt etiketten til <strong>'.esc_html($email).'</strong>.</p>'.$btn.$valid_note.$estimated_html.$qr_success.$regen_btn.'</div>'.$fs_html.'</div>'.$js;
     }
 
     private function view_oversize_success($email){
@@ -1135,7 +1175,7 @@ CSS;
         foreach ($attachments as $f) { if (strpos($f, sys_get_temp_dir()) !== false) @unlink($f); }
     }
 
-    private function send_customer_confirmation($order, $service_label, $fee_text, $lines_text, $label_url, $public_label_url, $tracking_url, $valid_days, $refund_label){
+    private function send_customer_confirmation($order, $service_label, $fee_text, $lines_text, $label_url, $public_label_url, $tracking_url, $valid_days, $refund_label, array $lines = []){
         $to = $order->get_billing_email();
         $subject = sprintf('Retur registrert – ordre #%d', $order->get_id());
 
@@ -1149,6 +1189,10 @@ CSS;
         $activate_url = $this->build_fs_activate_url('', $until_ts, home_url('/checkout/'));
 
         $order_lines_html = nl2br(esc_html($lines_text));
+        $estimated = $this->estimate_refund_total($order, $lines);
+        $estimated_html = $estimated['raw'] > 0 ? '<li><strong>Estimert refusjon (varer):</strong> '.esc_html($estimated['formatted']).'</li>' : '';
+
+        $tracking_html = $tracking_url ? '<li><strong>Sporing:</strong> <a href="'.esc_url($tracking_url).'">'.esc_html($tracking_url).'</a><br><small style="color:#4b5563">Sporingen aktiveres etter at pakken er innlevert.</small></li>' : '';
 
         $html = '
         <div style="font:14px/1.45 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111">
@@ -1157,10 +1201,17 @@ CSS;
           <ul>
             <li><strong>Frakttjeneste:</strong> '.esc_html($service_label).'</li>
             <li><strong>Returavgift (anslag):</strong> '.esc_html($fee_text).'</li>'.
-            ($tracking_url ? '<li><strong>Sporing:</strong> <a href="'.esc_url($tracking_url).'">'.esc_html($tracking_url).'</a></li>' : '').
+            $tracking_html.
+            $estimated_html.
             ($media_url ? '<li><strong>Etikett:</strong> <a href="'.esc_url($media_url).'">Last ned PDF</a></li>' : '').
           '</ul>
           <p>Etiketten er gyldig i '.intval($valid_days).' dager.</p>
+          <h3 style="margin:18px 0 8px">Slik gjør du</h3>
+          <ol style="padding-left:20px;margin:0 0 12px;color:#111">
+            <li>Legg ved returskjemaet ditt om du har det tilgjengelig.</li>
+            <li>Pakk varen godt og fest etiketten eller vis QR-koden hos utleveringsstedet.</li>
+            <li>Lever pakken og ta vare på kvittering/sporingsnummer.</li>
+          </ol>
           <h3 style="margin:18px 0 8px">Valgte produkter</h3>
           <pre style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:10px;white-space:pre-wrap">'.$order_lines_html.'</pre>
           <p><strong>Refusjon:</strong> '.esc_html($refund_label).' etter mottak og kontroll.</p>
@@ -1182,9 +1233,17 @@ CSS;
         if ($attach_id) {
             $path = get_attached_file($attach_id);
             if (is_readable($path)) $attachments[] = $path;
+        } elseif ($media_url) {
+            $host = parse_url($media_url, PHP_URL_HOST) ?: '';
+            $allow_attach = in_array($host, ['api.cargonizer.no','cargonizer.no'], true);
+            if ($allow_attach) {
+                $tmp = $this->safe_download_pdf($media_url);
+                if (!is_wp_error($tmp)) $attachments[] = $tmp;
+            }
         }
 
         wp_mail($to, $subject, $html, $headers, $attachments);
+        foreach ($attachments as $f) { if (strpos($f, sys_get_temp_dir()) !== false) @unlink($f); }
     }
 
     private function format_return_lines($order, array $lines){
@@ -2067,10 +2126,10 @@ CSS;
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename=returlogg-'.date('Ymd-His').'.csv');
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['ID','Dato','Order','Email','Årsak','Carrier','Pakkestørrelse','Label','Tracking','Ny ordre','FS nonce']);
+            fputcsv($out, ['ID','Dato','Order','Email','Årsak','Carrier','Pakkestørrelse','Label','Tracking','Notat','Ny ordre','FS nonce']);
             $rows = $wpdb->get_results("SELECT * FROM $table ORDER BY created DESC LIMIT 5000");
             foreach ($rows as $r) {
-                fputcsv($out, [$r->id,$r->created,$r->order_id,$r->email,$r->reason,$r->carrier,$r->parcel_size,$r->label_url,$r->tracking_url,$r->new_order_id,$r->fs_nonce]);
+                fputcsv($out, [$r->id,$r->created,$r->order_id,$r->email,$r->reason,$r->carrier,$r->parcel_size,$r->label_url,$r->tracking_url,$r->notes,$r->new_order_id,$r->fs_nonce]);
             }
             fclose($out);
             exit;
@@ -2091,7 +2150,7 @@ CSS;
         echo '<a class="button button-primary" href="'.esc_url(wp_nonce_url(admin_url('admin.php?page=lp-cargo-returns-log&download=csv'),'lp_log_csv','_wpnonce')).'">Eksporter CSV</a>';
         echo '</form>';
 
-        echo '<table class="widefat striped"><thead><tr><th>ID</th><th>Dato</th><th>Ordre</th><th>E-post</th><th>Årsak</th><th>Carrier</th><th>Pakke</th><th>Label</th><th>Ny ordre?</th></tr></thead><tbody>';
+        echo '<table class="widefat striped"><thead><tr><th>ID</th><th>Dato</th><th>Ordre</th><th>E-post</th><th>Årsak</th><th>Carrier</th><th>Pakke</th><th>Label</th><th>Notat</th><th>Ny ordre?</th></tr></thead><tbody>';
         foreach ($rows as $r) {
             // Lazy «ny ordre?»
             if (empty($r->new_order_id)) {
@@ -2110,10 +2169,11 @@ CSS;
             echo '<td>'.esc_html($r->carrier ?: '-').'</td>';
             echo '<td>'.esc_html($r->parcel_size ?: '-').'</td>';
             echo '<td>'.($r->label_url?'<a href="'.esc_url($r->label_url).'" target="_blank" rel="noopener">PDF</a>':'-').'</td>';
+            echo '<td>'.($r->notes ? esc_html($r->notes) : '–').'</td>';
             echo '<td>'.($new_link?'<a href="'.esc_url($new_link).'">#'.intval($r->new_order_id).'</a>':'–').'</td>';
             echo '</tr>';
         }
-        if (!$rows) echo '<tr><td colspan="9">Ingen funn.</td></tr>';
+        if (!$rows) echo '<tr><td colspan="10">Ingen funn.</td></tr>';
         echo '</tbody></table></div>';
     }
 
@@ -2148,6 +2208,7 @@ CSS;
             'parcel_size'  => sanitize_text_field($d['parcel_size']),
             'label_url'    => esc_url_raw($d['label_url']),
             'tracking_url' => esc_url_raw($d['tracking_url']),
+            'notes'        => sanitize_text_field($d['notes'] ?? ''),
             'fs_nonce'     => sanitize_text_field($d['fs_nonce'] ?? ''),
         ]);
     }
