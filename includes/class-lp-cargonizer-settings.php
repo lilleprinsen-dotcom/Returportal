@@ -274,18 +274,23 @@ class LP_Cargonizer_Settings {
    });
  }
 
- async function load(){
+ async function load(force){
    box.innerHTML='Laster...';
-   const html=await post('lp_cargo_fetch_agreements',{});
+   const action = force ? 'lp_cargo_refresh_agreements' : 'lp_cargo_fetch_agreements';
+   const html=await post(action,{});
    box.innerHTML=html;
+   dirty=false;
 
    // mark dirty on change
-   box.addEventListener('change', function(){
-     box.querySelectorAll('.lp-cargo-agree-status').forEach(function(s){
-       s.textContent='Endringer ikke lagret';
-     });
-     dirty=true;
-   });
+  if(!box.dataset.boundChange){
+    box.addEventListener('change', function(){
+      box.querySelectorAll('.lp-cargo-agree-status').forEach(function(s){
+        s.textContent='Endringer ikke lagret';
+      });
+      dirty=true;
+    });
+    box.dataset.boundChange='1';
+  }
 
    // save all
    box.querySelectorAll('.lp-cargo-agree-save').forEach(function(saveBtn){
@@ -320,9 +325,17 @@ class LP_Cargonizer_Settings {
      });
    });
 
-   if(btn){ btn.addEventListener('click',function(ev){ev.preventDefault();load();}); }
+  box.querySelectorAll('.lp-cargo-agree-refresh').forEach(function(refreshBtn){
+    refreshBtn.addEventListener('click', function(ev){
+      ev.preventDefault();
+      var status = refreshBtn.closest ? refreshBtn.closest('.lp-agree-actions') : null;
+      status = status ? status.querySelector('.lp-cargo-agree-status') : box.querySelector('.lp-cargo-agree-status');
+      if(status){ status.textContent='Oppdaterer...'; }
+      load(true);
+    });
+  });
 
-   // Unlock
+  // Unlock
    const ub=document.getElementById('lp_unlock_btn');
    if(ub){ ub.addEventListener('click', async function(){
      const order=(document.getElementById('lp_unlock_order_id').value||'').replace(/^#/,'');
@@ -340,11 +353,11 @@ const r=await fetch(AJ,{
 
 // Init
 if (btn) {
-  btn.addEventListener('click', function(ev){ ev.preventDefault(); load(); });
+  btn.addEventListener('click', function(ev){ ev.preventDefault(); load(false); });
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', load);
+    document.addEventListener('DOMContentLoaded', function(){ load(false); });
   } else {
-    load();
+    load(false);
   }
 }
 
