@@ -112,6 +112,9 @@ final class LP_Cargonizer_Returns {
     /** For Media Library parenting */
     private $last_order_id_for_attachment = 0;
 
+    /** Siste tildelte fraktfri-bonus (nonce + utløp) */
+    private $last_granted_fs = ['nonce' => '', 'until' => 0];
+
     /** 🔒 Tillatte verter for utgående HTTP-kall */
     private $allowed_hosts = ['api.cargonizer.no','api.cargonizer.logistra.no','cargonizer.no','sandbox.cargonizer.no'];
 
@@ -942,6 +945,7 @@ CSS;
                           'parcel_size'=>$state['parcel_size'],
                           'label_url'=>'',
                           'tracking_url'=>'',
+                          'fs_nonce'=>$this->last_granted_fs['nonce'] ?? '',
                         ]);
                     }
                     $state['_done']=1; $state['_success_label']=''; $state['_valid_days']=$label_valid_days;
@@ -1005,6 +1009,7 @@ CSS;
                               'parcel_size'=>$state['parcel_size'],
                               'label_url'=>$label_url,
                               'tracking_url'=>$tracking,
+                              'fs_nonce'=>$this->last_granted_fs['nonce'] ?? '',
                             ]);
                         }
                         $state['_done']=1; $state['_success_label']=$label_url; $state['_valid_days']=$label_valid_days;
@@ -2131,13 +2136,18 @@ CSS;
         set_transient('lpfs_ip_'.$iph,      ['until'=>$until,'nonce'=>$nonce,'used'=>0], max(60, $until - time() + 3600));
         set_transient('lpfs_nonce_'.$nonce, ['until'=>$until,'iph'=>$iph,   'used'=>0], max(60, $until - time() + 3600));
 
+        $this->last_granted_fs = ['nonce'=>$nonce,'until'=>$until];
+
         $this->stats_log('_lp_fs_granted');
     }
 
     public function maybe_show_freeship_banner(){
         if (get_option(self::OPT_FS_BONUS_ENABLE,'1')!=='1') return;
+        if (function_exists('is_cart') && is_cart()) return;
+        if (function_exists('is_checkout') && is_checkout()) return;
         $st = $this->fs_status_for_current_visitor();
         if (!$st['active']) return;
+        if (!empty($_COOKIE['lp_fs_dismissed']) && $_COOKIE['lp_fs_dismissed']==='1') return;
         $until = (int)$st['until'];
         echo '<div class="lp-fs-banner" role="status" aria-live="polite">
                 <button type="button" class="lp-fs-close" aria-label="Lukk">&times;</button>
@@ -2147,8 +2157,9 @@ CSS;
 <script>(function(){
   function fmt(ms){if(ms<=0)return"Utløpt";var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;return h+"t "+m+"m "+ss+"s";}
   function tick(){var el=document.getElementById("lp-fs-countdown");if(!el)return;var until=(parseInt(el.getAttribute("data-until"),10)||0)*1000;el.textContent="Gjenstår: "+fmt(until-Date.now());}
-  function closeBanner(){var b=document.querySelector(".lp-fs-banner"); if(b){b.remove();} document.body.classList.remove("lp-body-pad"); try{sessionStorage.setItem("lp_fs_closed","1");}catch(e){}}
-  try{ if(sessionStorage.getItem("lp_fs_closed")==="1") { var b=document.querySelector(".lp-fs-banner"); if(b) b.remove(); } }catch(e){}
+  function closeBanner(){var b=document.querySelector(".lp-fs-banner"); if(b){b.remove();} document.body.classList.remove("lp-body-pad"); try{localStorage.setItem("lp_fs_closed","1");}catch(e){} try{document.cookie="lp_fs_dismissed=1;path=/;max-age="+(365*24*60*60)+";SameSite=Lax"+(location.protocol==="https:"?";Secure":"");}catch(e){}}
+  var dismissed=false; try{dismissed=localStorage.getItem("lp_fs_closed")==="1";}catch(e){}
+  if(dismissed){ var b=document.querySelector(".lp-fs-banner"); if(b) b.remove(); return; }
   document.body.classList.add("lp-body-pad");
   var c=document.querySelector(".lp-fs-close"); if(c) c.addEventListener("click", closeBanner);
   setInterval(tick,1000); tick();
@@ -2231,6 +2242,7 @@ CSS;
         if ($order && method_exists($order,'update_meta_data')) {
             $order->update_meta_data('_lp_fs_used', 1);
             $order->update_meta_data('_lp_fs_used_ts', time());
+            if ($nonce) $order->update_meta_data('_lp_fs_nonce', $nonce);
             $order->save();
         }
 
@@ -2304,7 +2316,7 @@ CSS;
     private function maybe_create_log_table(){
         global $wpdb;
         $ver = get_option(self::LOG_DBVER);
-        if ($ver === '1') return;
+        if ($ver === '2') return;
         $table = $wpdb->prefix . self::LOG_TABLE;
         $charset = $wpdb->get_charset_collate();
         $sql = "CREATE TABLE IF NOT EXISTS $table (
@@ -2320,6 +2332,7 @@ CSS;
             received DATETIME DEFAULT NULL,
             refunded DATETIME DEFAULT NULL,
             new_order_id BIGINT UNSIGNED DEFAULT NULL,
+            fs_nonce VARCHAR(32) DEFAULT NULL,
             notes TEXT DEFAULT NULL,
             PRIMARY KEY  (id),
             KEY order_id (order_id),
@@ -2328,43 +2341,60 @@ CSS;
         ) $charset;";
         require_once ABSPATH.'wp-admin/includes/upgrade.php';
         dbDelta($sql);
-        update_option(self::LOG_DBVER,'1', true);
+        update_option(self::LOG_DBVER,'2', true);
     }
 
-    private function find_new_order_after_return($customer_email, $after_datetime){
+    private function find_new_order_after_return($customer_email, $after_datetime, $fs_nonce = ''){
         $hours = (int)get_option(self::OPT_FS_BONUS_HOURS,24);
         $after_ts = is_numeric($after_datetime) ? (int)$after_datetime : strtotime($after_datetime);
         $cutoff_ts = $after_ts + ($hours * HOUR_IN_SECONDS);
 
-        // Look for orders by same email after 'after_datetime' where _lp_fs_used=1
-        $q = new WC_Order_Query([
-            'limit'        => 20,
-            'orderby'      => 'date',
-            'order'        => 'ASC',
-            'return'       => 'ids',
-            'date_created' => '>' . date('Y-m-d H:i:s', $after_ts),
-            'meta_query'   => [
-                'relation' => 'AND',
-                [
-                    'key'   => '_billing_email',
-                    'value' => $customer_email,
-                    'compare' => '=',
+        $queries = [];
+
+        // Primær: match på nonce + brukt fraktfri
+        if ($fs_nonce !== '') {
+            $queries[] = [
+                'meta_query' => [
+                    'relation' => 'AND',
+                    [ 'key' => '_lp_fs_used',  'value' => 1,          'compare' => '=' ],
+                    [ 'key' => '_lp_fs_nonce', 'value' => $fs_nonce,  'compare' => '=' ],
                 ],
-                [
-                    'key'   => '_lp_fs_used',
-                    'value' => 1,
-                    'compare' => '=',
-                ],
-            ],
-        ]);
-        $ids = $q->get_orders();
-        if (!$ids) return 0;
-        foreach ($ids as $oid) {
-            $o = wc_get_order($oid);
-            if (!$o) continue;
-            $created = $o->get_date_created();
-            if ($created && $created->getTimestamp() <= $cutoff_ts) return (int)$oid;
+            ];
         }
+
+        // Sekundær: match på e-post + brukt fraktfri
+        $queries[] = [
+            'meta_query' => [
+                'relation' => 'AND',
+                [ 'key' => '_lp_fs_used', 'value' => 1, 'compare' => '=' ],
+                [ 'key' => '_billing_email', 'value' => $customer_email, 'compare' => '=' ],
+            ],
+        ];
+
+        foreach ($queries as $args) {
+            $q = new WC_Order_Query(array_merge([
+                'limit'        => 20,
+                'orderby'      => 'date',
+                'order'        => 'ASC',
+                'return'       => 'ids',
+                'date_created' => '>' . date('Y-m-d H:i:s', $after_ts),
+            ], $args));
+
+            $ids = $q->get_orders();
+            if (!$ids) continue;
+            foreach ($ids as $oid) {
+                $o = wc_get_order($oid);
+                if (!$o) continue;
+                $created = $o->get_date_created();
+                $mail    = $o->get_billing_email();
+                if ($created && $created->getTimestamp() <= $cutoff_ts) {
+                    if ($fs_nonce !== '' && $o->get_meta('_lp_fs_nonce') !== $fs_nonce) continue;
+                    if (!empty($customer_email) && !empty($mail) && strcasecmp(trim($mail), trim($customer_email)) !== 0) continue;
+                    return (int)$oid;
+                }
+            }
+        }
+
         return 0;
     }
 
@@ -2378,10 +2408,10 @@ CSS;
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename=returlogg-'.date('Ymd-His').'.csv');
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['ID','Dato','Order','Email','Årsak','Carrier','Pakkestørrelse','Label','Tracking','Ny ordre']);
+            fputcsv($out, ['ID','Dato','Order','Email','Årsak','Carrier','Pakkestørrelse','Label','Tracking','Ny ordre','FS nonce']);
             $rows = $wpdb->get_results("SELECT * FROM $table ORDER BY created DESC LIMIT 5000");
             foreach ($rows as $r) {
-                fputcsv($out, [$r->id,$r->created,$r->order_id,$r->email,$r->reason,$r->carrier,$r->parcel_size,$r->label_url,$r->tracking_url,$r->new_order_id]);
+                fputcsv($out, [$r->id,$r->created,$r->order_id,$r->email,$r->reason,$r->carrier,$r->parcel_size,$r->label_url,$r->tracking_url,$r->new_order_id,$r->fs_nonce]);
             }
             fclose($out);
             exit;
@@ -2406,7 +2436,7 @@ CSS;
         foreach ($rows as $r) {
             // Lazy «ny ordre?»
             if (empty($r->new_order_id)) {
-                $newId = $this->find_new_order_after_return($r->email, $r->created);
+                $newId = $this->find_new_order_after_return($r->email, $r->created, $r->fs_nonce ?? '');
                 if ($newId) $wpdb->update($table, ['new_order_id'=>$newId], ['id'=>$r->id]);
                 $r->new_order_id = $newId;
             }
@@ -2460,6 +2490,7 @@ CSS;
             'parcel_size'  => sanitize_text_field($d['parcel_size']),
             'label_url'    => esc_url_raw($d['label_url']),
             'tracking_url' => esc_url_raw($d['tracking_url']),
+            'fs_nonce'     => sanitize_text_field($d['fs_nonce'] ?? ''),
         ]);
     }
 
