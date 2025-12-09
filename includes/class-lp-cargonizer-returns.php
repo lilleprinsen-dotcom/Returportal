@@ -1,17 +1,54 @@
-/*
- * Plugin Name: LP Cargonizer Return Portal
- * Description: Return-portal for WooCommerce med Cargonizer, fraktfri 24t-bonus (cookie/IP-basert), returårsaker, sikker label-fornyelse, returlogg m/ CSV, og ytelsesoptimalisering.
- * Version: 2.5.0
- * Author: Lilleprinsen / ChatGPT
- * Text Domain: lp-cargo
+<?php
+/**
+ * Core plugin functionality for LP Cargonizer Return Portal.
+ *
+ * @package LP_Cargonizer_Return_Portal
  */
 
-if (!defined('ABSPATH')) exit;
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 
-if (!class_exists('LP_Cargonizer_Returns')):
+if ( ! class_exists( 'LP_Cargonizer_Returns' ) ) {
 
 final class LP_Cargonizer_Returns {
 
+    /**
+     * Singleton instance.
+     *
+     * @var LP_Cargonizer_Returns|null
+     */
+    private static $instance = null;
+
+    /**
+     * Retrieve the plugin instance.
+     *
+     * @return LP_Cargonizer_Returns
+     */
+    public static function instance() {
+        if ( null === self::$instance ) {
+            self::$instance = new self();
+        }
+
+        return self::$instance;
+    }
+
+    /**
+     * Plugin activation handler.
+     */
+    public static function activate() {
+        $instance = self::instance();
+        $instance->register_events();
+        $instance->maybe_create_log_table();
+    }
+
+    /**
+     * Plugin deactivation handler.
+     */
+    public static function deactivate() {
+        wp_clear_scheduled_hook('lp_cargo_cleanup_labels');
+        wp_clear_scheduled_hook('lp_cargo_warm_agreements');
+    }
     /* -------- Options -------- */
     const OPT_API_KEY         = 'lp_cargo_api_key';
     const OPT_SENDER_ID       = 'lp_cargo_sender_id';
@@ -79,7 +116,7 @@ final class LP_Cargonizer_Returns {
     private $allowed_hosts = ['api.cargonizer.no','api.cargonizer.logistra.no','cargonizer.no','sandbox.cargonizer.no'];
 
     public function __construct() {
-        if (!defined('LP_CARGO_VERSION')) define('LP_CARGO_VERSION', '2.5.0');
+        if (!defined('LP_CARGO_VERSION')) define('LP_CARGO_VERSION', LP_CARGO_RETURN_VERSION);
         if (!defined('LP_CARGO_DEBUG')) define('LP_CARGO_DEBUG', false);
 
         if (!function_exists('esc_xml')) {
@@ -123,15 +160,7 @@ final class LP_Cargonizer_Returns {
         }
 
         // Cron + DB table
-        add_action('init', function(){
-            if (!wp_next_scheduled('lp_cargo_cleanup_labels')) {
-                wp_schedule_event(time()+HOUR_IN_SECONDS, 'daily', 'lp_cargo_cleanup_labels');
-            }
-            if (!wp_next_scheduled('lp_cargo_warm_agreements')) {
-                wp_schedule_event(time()+5*MINUTE_IN_SECONDS, 'hourly', 'lp_cargo_warm_agreements');
-            }
-            $this->maybe_create_log_table();
-        });
+        add_action('init', [$this,'register_events']);
         add_action('lp_cargo_cleanup_labels',  [$this,'cron_cleanup_labels']);
         add_action('lp_cargo_warm_agreements', [$this,'cron_warm_agreements']);
 
@@ -139,9 +168,22 @@ final class LP_Cargonizer_Returns {
         add_action('lp_cargo_return_created', [$this,'log_return_created'], 10, 1);
     }
 
+    /**
+     * Ensure scheduled events and database tables exist.
+     */
+    public function register_events(){
+        if (!wp_next_scheduled('lp_cargo_cleanup_labels')) {
+            wp_schedule_event(time()+HOUR_IN_SECONDS, 'daily', 'lp_cargo_cleanup_labels');
+        }
+        if (!wp_next_scheduled('lp_cargo_warm_agreements')) {
+            wp_schedule_event(time()+5*MINUTE_IN_SECONDS, 'hourly', 'lp_cargo_warm_agreements');
+        }
+        $this->maybe_create_log_table();
+    }
+
     /** i18n loader (lette forberedelser) */
     public function load_textdomain(){
-        load_plugin_textdomain('lp-cargo', false, dirname(plugin_basename(__FILE__)).'/languages');
+        load_plugin_textdomain('lp-cargo', false, dirname(plugin_basename(LP_CARGO_RETURN_PLUGIN_FILE)).'/languages');
     }
 
     /** Minimal logging når debug er på */
@@ -2408,6 +2450,4 @@ CSS;
 
 } // end class
 
-new LP_Cargonizer_Returns();
-
-endif;
+} // End if class exists.
