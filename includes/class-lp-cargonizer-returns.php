@@ -115,12 +115,19 @@ final class LP_Cargonizer_Returns {
     /** Siste tildelte fraktfri-bonus (nonce + utløp) */
     private $last_granted_fs = ['nonce' => '', 'until' => 0];
 
-    /** 🔒 Tillatte verter for utgående HTTP-kall */
-    private $allowed_hosts = ['api.cargonizer.no','api.cargonizer.logistra.no','cargonizer.no','sandbox.cargonizer.no'];
+    /** API client */
+    private $api_client;
 
     public function __construct() {
         if (!defined('LP_CARGO_VERSION')) define('LP_CARGO_VERSION', LP_CARGO_RETURN_VERSION);
         if (!defined('LP_CARGO_DEBUG')) define('LP_CARGO_DEBUG', false);
+
+        $this->api_client = new LP_Cargonizer_API_Client(
+            self::OPT_API_KEY,
+            self::OPT_SENDER_ID,
+            self::ENDPOINT_BASE,
+            [$this, 'log']
+        );
 
         if (!function_exists('esc_xml')) {
             function esc_xml($t){ return wp_specialchars($t, ENT_XML1); }
@@ -674,7 +681,7 @@ CSS;
         $keyReq    = trim(sanitize_text_field($_POST['key'] ?? ''));
         $senderReq = trim(sanitize_text_field($_POST['sender'] ?? ''));
 
-        $creds = $this->require_api_credentials($keyReq ?: null, $senderReq ?: null);
+        $creds = $this->api_client->require_api_credentials($keyReq ?: null, $senderReq ?: null);
         if (is_wp_error($creds)) {
             wp_send_json_error(['msg'=>$creds->get_error_message()], 400);
         }
@@ -686,17 +693,17 @@ CSS;
             }
         }
 
-        $url = rtrim(self::ENDPOINT_BASE,'/').'/transport_agreements.xml';
+        $url = rtrim($this->api_client->get_endpoint_base(),'/').'/transport_agreements.xml';
         $args = [
             'method'  => 'GET',
-            'headers' => $this->api_headers('application/xml', $creds['key'], $creds['sender']),
+            'headers' => $this->api_client->api_headers('application/xml', $creds['key'], $creds['sender']),
             'timeout' => 20,
             'redirection' => 2,
         ];
         $res = wp_remote_request($url, $args);
 
         if (is_wp_error($res)) {
-            $msg = $this->diagnose_http_error(0, $res->get_error_message(), '');
+            $msg = $this->api_client->diagnose_http_error(0, $res->get_error_message(), '');
             wp_send_json_error(['msg'=>$msg], 500);
         }
         $code = (int) wp_remote_retrieve_response_code($res);
@@ -704,7 +711,7 @@ CSS;
         if ($code>=200 && $code<300) {
             wp_send_json_success(['code'=>$code]);
         } else {
-            $msg = $this->diagnose_http_error($code, '', $body);
+            $msg = $this->api_client->diagnose_http_error($code, '', $body);
             wp_send_json_error(['msg'=>$msg, 'code'=>$code], 500);
         }
     }
@@ -1460,142 +1467,6 @@ CSS;
         return $last ?: '';
     }
 
-    /* ===================== API helpers & creation ===================== */
-
-    private function require_api_credentials($override_key = null, $override_sender = null) {
-        $key    = trim((string)($override_key    ?? (defined('LP_CARGO_API_KEY') ? LP_CARGO_API_KEY : get_option(self::OPT_API_KEY, ''))));
-        $sender = trim((string)($override_sender ?? (defined('LP_CARGO_SENDER_ID') ? LP_CARGO_SENDER_ID : get_option(self::OPT_SENDER_ID, ''))));
-
-        if ($key === '' || $sender === '') {
-            $msg_admin = __('Cargonizer API-nøkkel og Avsender-ID må fylles ut i innstillinger.', 'lp-cargo');
-            return current_user_can('manage_woocommerce')
-                ? new WP_Error('missing_credentials', $msg_admin)
-                : new WP_Error('cargonizer_http', __('Klarte ikke å kontakte transportør. Prøv igjen senere.', 'lp-cargo'));
-        }
-
-        return ['key' => $key, 'sender' => $sender];
-    }
-
-    private function api_headers($accept='application/xml', $override_key=null, $override_sender=null){
-        $key    = trim((string)$override_key);
-        $sender = trim((string)$override_sender);
-        $h = [
-            'X-Cargonizer-Key'    => $key,
-            'X-Cargonizer-Sender' => $sender,
-            'Accept'              => $accept,
-            'User-Agent'          => 'LP-Cargonizer-Returns/'.LP_CARGO_VERSION.'; '.home_url('/'),
-        ];
-        if ($accept==='application/xml') $h['Content-Type'] = 'application/xml; charset=utf-8';
-        return $h;
-    }
-
-    private function http($method, $path, $body=null, $queryArgs=[], $accept='application/xml'){
-        $base = rtrim(self::ENDPOINT_BASE,'/');
-        $url  = (preg_match('#^https?://#i',$path)) ? $path : $base.'/'.ltrim($path,'/');
-        if (!empty($queryArgs)) {
-            $qs  = http_build_query($queryArgs, '', '&', PHP_QUERY_RFC3986);
-            $url .= (strpos($url,'?')===false ? '?' : '&').$qs;
-        }
-
-        // 🔒 Host-allowlist
-        $host = parse_url($url, PHP_URL_HOST);
-        if ($host && !in_array(strtolower($host), array_map('strtolower',$this->allowed_hosts), true)) {
-            $msg = 'Blokkert utgående forespørsel til uautorisert vert: '.$host;
-            return current_user_can('manage_woocommerce')
-                ? new WP_Error('cargonizer_http_admin', $msg)
-                : new WP_Error('cargonizer_http','Klarte ikke å kontakte transportør. Prøv igjen senere.');
-        }
-
-        // Respekter WP_HTTP_BLOCK_EXTERNAL om aktivert
-        if (defined('WP_HTTP_BLOCK_EXTERNAL') && WP_HTTP_BLOCK_EXTERNAL) {
-            $allowed = defined('WP_ACCESSIBLE_HOSTS') ? WP_ACCESSIBLE_HOSTS : '';
-            $allowed_list = array_filter(array_map('trim', explode(',', strtolower($allowed))));
-            if (!in_array(strtolower($host), $allowed_list, true)) {
-                $msg = 'WP blokkerer utgående forespørsler. Legg api.cargonizer.no i WP_ACCESSIBLE_HOSTS i wp-config.php.';
-                return current_user_can('manage_woocommerce')
-                    ? new WP_Error('cargonizer_http_admin', $msg)
-                    : new WP_Error('cargonizer_http','Klarte ikke å kontakte transportør. Prøv igjen senere.');
-            }
-        }
-
-        $creds = $this->require_api_credentials();
-        if (is_wp_error($creds)) return $creds;
-
-        $args = [
-            'method'      => $method,
-            'headers'     => $this->api_headers($accept, $creds['key'], $creds['sender']),
-            'timeout'     => 45,
-            'redirection' => 3,
-            'body'        => ($method === 'GET' ? null : $body),
-        ];
-
-        $res = wp_remote_request($url, $args);
-
-        if (is_wp_error($res)) {
-            $detail = $this->diagnose_http_error(0, $res->get_error_message(), '');
-            $this->log('HTTP ERR: '.$detail.' → URL: '.$url);
-            return current_user_can('manage_woocommerce')
-                ? new WP_Error('cargonizer_http_admin', $detail)
-                : new WP_Error('cargonizer_http','Klarte ikke å kontakte transportør. Prøv igjen senere.');
-        }
-
-        $code = (int) wp_remote_retrieve_response_code($res);
-        $text = (string) wp_remote_retrieve_body($res);
-
-        if ($code>=200 && $code<300) return $text;
-
-        $detail = $this->diagnose_http_error($code, '', $text);
-        $this->log('HTTP '.$code.' – body: '.substr($text,0,600).' … URL: '.$url);
-
-        return current_user_can('manage_woocommerce')
-            ? new WP_Error('cargonizer_http_admin', $detail)
-            : new WP_Error('cargonizer_http','Klarte ikke å kontakte transportør. Prøv igjen senere.');
-    }
-
-    private function diagnose_http_error($code, $wp_error_msg='', $body=''){
-        if ($code === 0) {
-            $m = $wp_error_msg ?: 'Ukjent nettverksfeil';
-            if (stripos($m,'cURL error 60')!==false) return 'SSL/TLS-validering feilet på serveren (cURL #60). Oppdater CA/sertifikatkjede hos host.';
-            if (stripos($m,'cURL error 28')!==false || stripos($m,'timed out')!==false) return 'Nettverkstimeout (cURL #28). Drift/Firewall eller nettverksstøy.';
-            if (stripos($m,'cURL error 6')!==false || stripos($m,'Could not resolve host')!==false) return 'DNS-oppslag feilet (cURL #6). Sjekk serverens DNS.';
-            return 'Nettverksfeil: '.$m;
-        }
-
-        $xml_msg = '';
-        if (($code === 400 || $code === 422) && $body) {
-            $old = libxml_use_internal_errors(true);
-            $doc = @simplexml_load_string($body);
-            if ($doc && isset($doc->errors)) {
-                $msgs = [];
-                foreach ($doc->errors->error as $e) { $msgs[] = trim((string)$e); }
-                if ($msgs) $xml_msg = ' Detaljer: '.implode(' | ', array_unique($msgs));
-            }
-            libxml_clear_errors(); libxml_use_internal_errors($old);
-        }
-
-        if ($code === 401) return 'Autentisering feilet (401). Sjekk API-nøkkel.';
-        if ($code === 402) return 'Autorisasjon feilet (402). Sannsynligvis mangler/feil Sender-ID.';
-        if ($code === 403) return 'Tilgang nektes (403). Sjekk lisens eller Sender-ID.';
-        if ($code === 404) return 'Endepunkt utilgjengelig (404).';
-        if ($code === 422) return 'Forespørselen ble avvist (422).'.$xml_msg;
-        if ($code === 400) return 'Valideringsfeil (400).'.$xml_msg;
-        if ($code >= 500)  return 'Transportør svarte med feil ('.$code.').';
-        return 'Ukjent HTTP-feil ('.$code.').';
-    }
-
-    private function load_xml($xml){
-        $old = libxml_use_internal_errors(true);
-        $doc = @simplexml_load_string($xml);
-        $errs = libxml_get_errors();
-        libxml_clear_errors();
-        libxml_use_internal_errors($old);
-        if (!$doc) {
-            $this->log('Cargonizer XML parse failed: '. print_r($errs, true));
-            return new WP_Error('bad_xml','Kunne ikke tolke respons fra transportør.');
-        }
-        return $doc;
-    }
-
     private function get_transport_agreements($filter_allowed=false){
         if ($this->agreements_cache_runtime !== null) {
             $all = $this->agreements_cache_runtime;
@@ -1604,12 +1475,12 @@ CSS;
         $cache_key = 'lp_cargo_agreements_cache_'.md5((string)get_option(self::OPT_SENDER_ID,'').home_url('/'));
         $xml = get_transient($cache_key);
         if (!$xml) {
-            $xml = $this->http('GET','transport_agreements.xml');
+            $xml = $this->api_client->http('GET','transport_agreements.xml');
             if (!is_wp_error($xml)) set_transient($cache_key, $xml, 30 * MINUTE_IN_SECONDS);
         }
         if (is_wp_error($xml)) return $xml;
 
-        $doc = $this->load_xml($xml);
+        $doc = $this->api_client->load_xml($xml);
         if (is_wp_error($doc)) return $doc;
 
         $out=[];
@@ -1761,9 +1632,9 @@ CSS;
             esc_xml($product), $tt_email_xml, $partsXml, $itemsXml, $servicesXml.$referencesXml
         );
 
-        $resp = $this->http('POST','consignments.xml',$consignmentsXml);
+        $resp = $this->api_client->http('POST','consignments.xml',$consignmentsXml);
         if (is_wp_error($resp)) return $resp;
-        $doc = $this->load_xml($resp);
+        $doc = $this->api_client->load_xml($resp);
         if (is_wp_error($doc)) return $doc;
 
         $consignmentId = '';
@@ -1804,14 +1675,14 @@ CSS;
         $qs = '?'.implode('&', array_map(function($id){
             return 'consignment_ids[]='.rawurlencode($id);
         }, $ids));
-        $res = $this->http('POST', 'consignments/transfer.xml'.$qs, null, []);
+        $res = $this->api_client->http('POST', 'consignments/transfer.xml'.$qs, null, []);
         if (is_wp_error($res)) return $res;
         return true;
     }
 
     private function download_and_host_label($consignmentId, $fallbackLabelUrl=''){
         // Official endpoint: /consignments/label_pdf?consignment_ids[]=ID
-        $pdf = $this->http(
+        $pdf = $this->api_client->http(
             'GET',
             'consignments/label_pdf',
             null,
@@ -1820,7 +1691,7 @@ CSS;
         );
 
         // Fallback: provided label url
-        if (is_wp_error($pdf) || !$this->looks_like_pdf($pdf)) {
+        if (is_wp_error($pdf) || !$this->api_client->looks_like_pdf($pdf)) {
             $pdf = '';
             if ($fallbackLabelUrl) {
                 $p = parse_url($fallbackLabelUrl);
@@ -1829,13 +1700,13 @@ CSS;
                 $q = [];
                 if (!empty($p['query'])) parse_str($p['query'], $q);
 
-                if ($h && in_array(strtolower($h), array_map('strtolower',$this->allowed_hosts), true) && $path) {
-                    $pdf = $this->http('GET', ltrim($path,'/'), null, $q, 'application/pdf');
+                if ($this->api_client->is_allowed_host($h) && $path) {
+                    $pdf = $this->api_client->http('GET', ltrim($path,'/'), null, $q, 'application/pdf');
                 }
             }
         }
 
-        if (is_wp_error($pdf) || !$this->looks_like_pdf($pdf)) return '';
+        if (is_wp_error($pdf) || !$this->api_client->looks_like_pdf($pdf)) return '';
 
         // Write to uploads
         $upload = wp_upload_dir();
@@ -1880,10 +1751,6 @@ CSS;
         }
 
         return $url;
-    }
-
-    private function looks_like_pdf($bytes){
-        return is_string($bytes) && substr($bytes,0,4)==="%PDF";
     }
 
     /* ===================== Business rules helpers ===================== */

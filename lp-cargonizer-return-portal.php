@@ -28,6 +28,7 @@ if ( ! defined( 'LP_CARGO_RETURN_VERSION' ) ) {
     define( 'LP_CARGO_RETURN_VERSION', '2.5.0' );
 }
 
+require_once LP_CARGO_RETURN_PLUGIN_DIR . 'includes/class-lp-cargonizer-api-client.php';
 require_once LP_CARGO_RETURN_PLUGIN_DIR . 'includes/class-lp-cargonizer-returns.php';
 
 /**
