@@ -30,6 +30,7 @@ if ( ! defined( 'LP_CARGO_RETURN_VERSION' ) ) {
 
 require_once LP_CARGO_RETURN_PLUGIN_DIR . 'includes/class-lp-cargonizer-api-client.php';
 require_once LP_CARGO_RETURN_PLUGIN_DIR . 'includes/class-lp-cargonizer-returns.php';
+require_once LP_CARGO_RETURN_PLUGIN_DIR . 'includes/class-lp-cargonizer-settings.php';
 
 /**
  * Handle plugin activation tasks such as setting up cron events and database tables.
