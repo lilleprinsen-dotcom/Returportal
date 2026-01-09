@@ -108,6 +108,15 @@ class LP_Cargonizer_Settings {
             }
             return $pin;
         } ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_PAGE_TITLE, [ 'sanitize_callback' => 'sanitize_text_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_TITLE, [ 'sanitize_callback' => 'sanitize_text_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, [ 'sanitize_callback' => 'sanitize_textarea_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_BUTTON, [ 'sanitize_callback' => 'sanitize_text_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_TITLE, [ 'sanitize_callback' => 'sanitize_text_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, [ 'sanitize_callback' => 'sanitize_textarea_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_PLACEHOLDER, [ 'sanitize_callback' => 'sanitize_text_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, [ 'sanitize_callback' => 'sanitize_textarea_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, [ 'sanitize_callback' => 'sanitize_textarea_field' ] );
         register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_RETURN_REASONS, [ 'sanitize_callback' => function ( $v ) {
             if ( is_array( $v ) ) {
                 $lines = $v;
@@ -180,6 +189,33 @@ class LP_Cargonizer_Settings {
         if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_PIN, null ) === null ) {
             update_option( LP_Cargonizer_Returns::OPT_ADMIN_PIN, '', true );
         }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_PAGE_TITLE, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_PAGE_TITLE, 'Returadmin', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_TITLE, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_TITLE, 'Admin Login', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, 'Logg inn for å søke opp åpne ordre.', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_BUTTON, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_BUTTON, 'Logg inn', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_TITLE, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_TITLE, 'Ordresøk', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, 'Søk på ordrenummer eller kundenavn. Viser åpne ordre sortert etter ordredato.', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_PLACEHOLDER, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_PLACEHOLDER, 'Ordrenummer eller kundenavn', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, 'Logg inn for å søke etter åpne ordre.', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, '' ) === '' ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, 'Ingen åpne ordre funnet for dette søket.', true );
+        }
         if ( get_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, '' ) === '' ) {
             update_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, 'Ønsker du bytte? Vi dekker frakt på ny forsendelse.', true );
         }
@@ -215,6 +251,15 @@ class LP_Cargonizer_Settings {
         $support     = get_option( LP_Cargonizer_Returns::OPT_SUPPORT_EMAIL, get_option( 'admin_email' ) );
         $admin_user  = get_option( LP_Cargonizer_Returns::OPT_ADMIN_USERNAME, '' );
         $admin_pin   = get_option( LP_Cargonizer_Returns::OPT_ADMIN_PIN, '' );
+        $admin_page_title = get_option( LP_Cargonizer_Returns::OPT_ADMIN_PAGE_TITLE, 'Returadmin' );
+        $admin_login_title = get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_TITLE, 'Admin Login' );
+        $admin_login_desc = get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, 'Logg inn for å søke opp åpne ordre.' );
+        $admin_login_button = get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_BUTTON, 'Logg inn' );
+        $admin_search_title = get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_TITLE, 'Ordresøk' );
+        $admin_search_desc = get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, 'Søk på ordrenummer eller kundenavn. Viser åpne ordre sortert etter ordredato.' );
+        $admin_search_placeholder = get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_PLACEHOLDER, 'Ordrenummer eller kundenavn' );
+        $admin_status_prompt = get_option( LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, 'Logg inn for å søke etter åpne ordre.' );
+        $admin_empty_results = get_option( LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, 'Ingen åpne ordre funnet for dette søket.' );
         $reasons     = (array) get_option( LP_Cargonizer_Returns::OPT_RETURN_REASONS, [] );
         $exInfo      = get_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, '' );
 
@@ -251,7 +296,12 @@ class LP_Cargonizer_Settings {
         echo '<tr><th>Slett gamle labels</th><td><input type="number" name="' . LP_Cargonizer_Returns::OPT_LABEL_RETENTION_DAYS . '" value="' . esc_attr( $labelR ) . '" min="7" max="180" step="1" style="width:120px"> dager</td></tr>';
 
         echo '<tr><th>Support-epost</th><td><input type="email" name="' . LP_Cargonizer_Returns::OPT_SUPPORT_EMAIL . '" value="' . esc_attr( $support ) . '" style="width:320px"><p class="description">Vises til kunden i returportalen.</p></td></tr>';
-        echo '<tr><th>Admin-innlogging</th><td><label>Brukernavn <input type="text" name="' . LP_Cargonizer_Returns::OPT_ADMIN_USERNAME . '" value="' . esc_attr( $admin_user ) . '" style="width:240px"></label><br><label>PIN (4 siffer) <input type="password" name="' . LP_Cargonizer_Returns::OPT_ADMIN_PIN . '" value="' . esc_attr( $admin_pin ) . '" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" style="width:120px"></label><p class="description">Brukes på admin-innloggingssiden som er tilgjengelig i frontend.</p></td></tr>';
+        echo '<tr><th colspan="2"><h2>Admin-frontend</h2><p class="description">Innstillinger for adminvisningen som er tilgjengelig på <code>' . esc_html( home_url( '/' . LP_Cargonizer_Returns::ADMIN_ROUTE_SLUG . '/' ) ) . '</code>.</p></th></tr>';
+        echo '<tr><th>Side-overskrift</th><td><input type="text" name="' . LP_Cargonizer_Returns::OPT_ADMIN_PAGE_TITLE . '" value="' . esc_attr( $admin_page_title ) . '" style="width:320px"></td></tr>';
+        echo '<tr><th>Innloggingstekst</th><td><label>Tittel <input type="text" name="' . LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_TITLE . '" value="' . esc_attr( $admin_login_title ) . '" style="width:320px"></label><br><label>Beskrivelse<br><textarea name="' . LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC . '" rows="2" cols="40" style="width:420px">' . esc_textarea( $admin_login_desc ) . '</textarea></label><br><label>Knappetekst <input type="text" name="' . LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_BUTTON . '" value="' . esc_attr( $admin_login_button ) . '" style="width:200px"></label></td></tr>';
+        echo '<tr><th>Innlogging</th><td><label>Brukernavn <input type="text" name="' . LP_Cargonizer_Returns::OPT_ADMIN_USERNAME . '" value="' . esc_attr( $admin_user ) . '" style="width:240px"></label><br><label>PIN (4 siffer) <input type="password" name="' . LP_Cargonizer_Returns::OPT_ADMIN_PIN . '" value="' . esc_attr( $admin_pin ) . '" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" style="width:120px"></label><p class="description">Brukes på admin-innloggingssiden i frontend.</p></td></tr>';
+        echo '<tr><th>Ordresøk</th><td><label>Tittel <input type="text" name="' . LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_TITLE . '" value="' . esc_attr( $admin_search_title ) . '" style="width:320px"></label><br><label>Beskrivelse<br><textarea name="' . LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC . '" rows="2" cols="40" style="width:420px">' . esc_textarea( $admin_search_desc ) . '</textarea></label><br><label>Placeholder <input type="text" name="' . LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_PLACEHOLDER . '" value="' . esc_attr( $admin_search_placeholder ) . '" style="width:320px"></label></td></tr>';
+        echo '<tr><th>Statusmeldinger</th><td><label>Starttekst<br><textarea name="' . LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT . '" rows="2" cols="40" style="width:420px">' . esc_textarea( $admin_status_prompt ) . '</textarea></label><br><label>Ingen treff<br><textarea name="' . LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS . '" rows="2" cols="40" style="width:420px">' . esc_textarea( $admin_empty_results ) . '</textarea></label></td></tr>';
         echo '<tr><th>Årsaker</th><td><textarea name="' . LP_Cargonizer_Returns::OPT_RETURN_REASONS . '" rows="4" cols="40" style="width:320px">' . esc_textarea( implode( "\n", $reasons ) ) . '</textarea><p class="description">En per linje.</p></td></tr>';
         echo '<tr><th>Bytte-informasjon</th><td><textarea name="' . LP_Cargonizer_Returns::OPT_EXCHANGE_INFO . '" rows="3" cols="40" style="width:420px">' . esc_textarea( $exInfo ) . '</textarea><p class="description">Vises når kunde velger bytte.</p></td></tr>';
 
