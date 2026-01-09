@@ -161,6 +161,14 @@ final class LP_Cargonizer_Returns {
         add_action('init',               [$this,'register_shortcode']);
         add_action('wp_enqueue_scripts', [$this,'maybe_enqueue_assets']);
 
+        // Frontend admin login + search
+        add_action('wp_ajax_lp_cargo_admin_login', [$this,'ajax_admin_login']);
+        add_action('wp_ajax_nopriv_lp_cargo_admin_login', [$this,'ajax_admin_login']);
+        add_action('wp_ajax_lp_cargo_admin_validate', [$this,'ajax_admin_validate']);
+        add_action('wp_ajax_nopriv_lp_cargo_admin_validate', [$this,'ajax_admin_validate']);
+        add_action('wp_ajax_lp_cargo_admin_search_orders', [$this,'ajax_admin_search_orders']);
+        add_action('wp_ajax_nopriv_lp_cargo_admin_search_orders', [$this,'ajax_admin_search_orders']);
+
         // Label-regen (signed token)
         add_action('wp_ajax_lp_cargo_regen_label',        [$this,'ajax_regen_label']);
         add_action('wp_ajax_nopriv_lp_cargo_regen_label', [$this,'ajax_regen_label']);
@@ -387,6 +395,23 @@ final class LP_Cargonizer_Returns {
 .lp-admin-form{display:grid;gap:14px}
 .lp-admin-actions{display:flex;flex-direction:column;gap:10px}
 .lp-admin-note{font-size:13px;color:#6b7280}
+.lp-admin-search{display:none;margin-top:18px}
+.lp-admin-search.is-active{display:block}
+.lp-admin-toolbar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.lp-admin-toolbar .lp-input{min-width:240px}
+.lp-admin-results{display:grid;gap:12px;margin-top:16px}
+.lp-admin-order{border:1px solid #e5e7eb;border-radius:14px;padding:14px;background:#fff}
+.lp-admin-order-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.lp-admin-order-title{font-weight:800}
+.lp-admin-order-date{color:#6b7280;font-size:13px}
+.lp-admin-order-grid{display:grid;gap:8px;margin-top:10px}
+.lp-admin-order-row{display:grid;gap:4px}
+.lp-admin-order-label{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:700}
+.lp-admin-order-value{font-size:15px;color:#111827}
+.lp-admin-products{display:grid;gap:4px}
+.lp-admin-status{font-size:13px;color:#6b7280}
+.lp-admin-login{display:block}
+.lp-admin-login.is-hidden{display:none}
 .lp-progress{display:flex;height:8px;background:#edf1ee;border-radius:999px;overflow:hidden}
 .lp-progress>span{display:block;background:var(--lp-green);width:0;transition:width .25s ease}
 .lp-help{color:#6b7280;font-size:14px}
@@ -408,7 +433,7 @@ final class LP_Cargonizer_Returns {
 .lp-sm-img img{width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid #e5e7eb;background:#fff}
 .lp-badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;border:1px solid #bfdbfe;background:#eff6ff;vertical-align:middle;margin-left:8px}
 @media(max-width:540px){.lp-btn-row{flex-direction:column}.lp-btn{width:100%}.lp-table-wrap{margin:0;padding:0}}
-@media(max-width:720px){.lp-admin-card{padding:16px}.lp-admin-title{font-size:20px}}
+@media(max-width:720px){.lp-admin-card{padding:16px}.lp-admin-title{font-size:20px}.lp-admin-toolbar{flex-direction:column;align-items:stretch}}
 CSS;
         $css = str_replace('%BGCOL%', esc_attr(get_option(self::OPT_FS_BANNER_COLOR,'#0ea5e9')), $css);
         wp_add_inline_style('lp-cargo-returns',$css);
@@ -423,6 +448,152 @@ CSS;
     private function prg_load_state($token){
         if (!$token) return null;
         return get_transient('lp_rtn_state_'.$token) ?: null;
+    }
+
+    private function admin_token_key($token){
+        return 'lp_cargo_admin_token_'.$token;
+    }
+
+    private function refresh_admin_token($token){
+        if (!$token) return;
+        set_transient($this->admin_token_key($token), time(), 30*DAY_IN_SECONDS);
+    }
+
+    private function validate_admin_token($token){
+        if (!$token) return false;
+        return (bool) get_transient($this->admin_token_key($token));
+    }
+
+    public function ajax_admin_login(){
+        if (!function_exists('wc_get_order')) wp_send_json_error(['msg'=>'WooCommerce kreves.'], 400);
+        $username = sanitize_text_field($_POST['username'] ?? '');
+        $pin = sanitize_text_field($_POST['pin'] ?? '');
+        $stored_user = (string) get_option(self::OPT_ADMIN_USERNAME, '');
+        $stored_pin = (string) get_option(self::OPT_ADMIN_PIN, '');
+
+        if ($stored_user === '' || $stored_pin === '') {
+            wp_send_json_error(['msg'=>'Admin-innlogging er ikke konfigurert.'], 400);
+        }
+
+        if (!hash_equals($stored_user, $username) || !hash_equals($stored_pin, $pin)) {
+            wp_send_json_error(['msg'=>'Ugyldig brukernavn eller PIN.'], 403);
+        }
+
+        $token = wp_generate_password(32, false, false);
+        $this->refresh_admin_token($token);
+        wp_send_json_success(['token'=>$token]);
+    }
+
+    public function ajax_admin_validate(){
+        $token = sanitize_text_field($_POST['token'] ?? '');
+        if (!$this->validate_admin_token($token)) {
+            wp_send_json_error(['msg'=>'Ugyldig sesjon.'], 403);
+        }
+        $this->refresh_admin_token($token);
+        wp_send_json_success(['ok'=>true]);
+    }
+
+    public function ajax_admin_search_orders(){
+        if (!function_exists('wc_get_order')) wp_send_json_error(['msg'=>'WooCommerce kreves.'], 400);
+        $token = sanitize_text_field($_POST['token'] ?? '');
+        if (!$this->validate_admin_token($token)) {
+            wp_send_json_error(['msg'=>'Ugyldig sesjon.'], 403);
+        }
+        $this->refresh_admin_token($token);
+
+        $query = trim(sanitize_text_field($_POST['query'] ?? ''));
+        if ($query === '') {
+            wp_send_json_success(['orders'=>[]]);
+        }
+
+        $statuses = (array) apply_filters('lp_cargo_admin_open_statuses', ['processing','on-hold','pending']);
+        $limit = (int) apply_filters('lp_cargo_admin_search_limit', 50);
+        $orders = [];
+
+        if (ctype_digit($query)) {
+            $order_id = absint($query);
+            if ($order_id) {
+                $order = wc_get_order($order_id);
+                if ($order && in_array($order->get_status(), $statuses, true)) {
+                    $orders[$order->get_id()] = $order;
+                }
+            }
+        }
+
+        $name_matches = wc_get_orders([
+            'status' => $statuses,
+            'limit' => $limit,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'meta_query' => [
+                'relation' => 'OR',
+                [
+                    'key' => '_billing_first_name',
+                    'value' => $query,
+                    'compare' => 'LIKE',
+                ],
+                [
+                    'key' => '_billing_last_name',
+                    'value' => $query,
+                    'compare' => 'LIKE',
+                ],
+                [
+                    'key' => '_shipping_first_name',
+                    'value' => $query,
+                    'compare' => 'LIKE',
+                ],
+                [
+                    'key' => '_shipping_last_name',
+                    'value' => $query,
+                    'compare' => 'LIKE',
+                ],
+            ],
+        ]);
+
+        foreach ($name_matches as $order) {
+            $orders[$order->get_id()] = $order;
+        }
+
+        $list = array_values($orders);
+        usort($list, function($a, $b){
+            $ad = $a->get_date_created() ? $a->get_date_created()->getTimestamp() : 0;
+            $bd = $b->get_date_created() ? $b->get_date_created()->getTimestamp() : 0;
+            return $bd <=> $ad;
+        });
+
+        if ($limit > 0 && count($list) > $limit) {
+            $list = array_slice($list, 0, $limit);
+        }
+
+        $data = [];
+        foreach ($list as $order) {
+            $items = [];
+            foreach ($order->get_items() as $item) {
+                $items[] = [
+                    'name' => $item->get_name(),
+                    'qty' => $item->get_quantity(),
+                ];
+            }
+            $customer = $order->get_formatted_billing_full_name();
+            if (!$customer) {
+                $customer = $order->get_formatted_shipping_full_name();
+            }
+            if (!$customer) {
+                $customer = __('Ukjent kunde', 'lp-cargo');
+            }
+            $date = $order->get_date_created();
+            $data[] = [
+                'id' => $order->get_id(),
+                'number' => $order->get_order_number(),
+                'customer_name' => $customer,
+                'products' => $items,
+                'order_date' => $date ? $date->date_i18n(get_option('date_format').' '.get_option('time_format')) : '',
+                'order_value' => wp_strip_all_tags(wc_price($order->get_total(), ['currency' => $order->get_currency()])),
+                'shipping_method' => $order->get_shipping_method() ?: __('Ikke valgt', 'lp-cargo'),
+            ];
+        }
+
+        wp_send_json_success(['orders'=>$data]);
     }
 
     public function ajax_test_api(){
@@ -475,12 +646,13 @@ CSS;
 
         $username_hint = get_option(self::OPT_ADMIN_USERNAME, '');
         $username_placeholder = $username_hint !== '' ? $username_hint : __('Skriv inn brukernavn', 'lp-cargo');
+        $ajax_url = admin_url('admin-ajax.php');
 
         ob_start();
         echo '<div class="lp-wrap">';
-        echo '<div class="lp-admin-card">';
+        echo '<div class="lp-admin-card lp-admin-login" id="lp-admin-login">';
         echo '<h2 class="lp-admin-title">' . esc_html__('Admin Login', 'lp-cargo') . '</h2>';
-        echo '<p class="lp-admin-sub">' . esc_html__('Denne innloggingssiden er klar for oppsett. Funksjonalitet kommer senere.', 'lp-cargo') . '</p>';
+        echo '<p class="lp-admin-sub">' . esc_html__('Logg inn for å søke opp åpne ordre.', 'lp-cargo') . '</p>';
         echo '<form class="lp-admin-form" autocomplete="off" novalidate>';
         echo '<div>';
         echo '<label class="lp-label" for="lp-admin-username">' . esc_html__('Brukernavn', 'lp-cargo') . '</label>';
@@ -489,15 +661,238 @@ CSS;
         echo '<div>';
         echo '<label class="lp-label" for="lp-admin-pin">' . esc_html__('PIN-kode', 'lp-cargo') . '</label>';
         echo '<input class="lp-input" type="password" id="lp-admin-pin" name="lp-admin-pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="' . esc_attr__('4 siffer', 'lp-cargo') . '" aria-describedby="lp-admin-pin-help">';
-        echo '<span class="lp-admin-note" id="lp-admin-pin-help">' . esc_html__('PIN må være 4 siffer. Ingen innlogging er aktiv ennå.', 'lp-cargo') . '</span>';
+        echo '<span class="lp-admin-note" id="lp-admin-pin-help">' . esc_html__('PIN må være 4 siffer.', 'lp-cargo') . '</span>';
+        echo '</div>';
+        echo '<div>';
+        echo '<label class="lp-admin-note"><input type="checkbox" id="lp-admin-remember" checked> ' . esc_html__('Husk innlogging på denne enheten', 'lp-cargo') . '</label>';
         echo '</div>';
         echo '<div class="lp-admin-actions">';
-        echo '<button type="button" class="lp-btn" disabled>' . esc_html__('Logg inn', 'lp-cargo') . '</button>';
-        echo '<span class="lp-admin-note">' . esc_html__('Tilgjengelig uten admin-innlogging. Koble til PIN senere i innstillinger.', 'lp-cargo') . '</span>';
+        echo '<button type="button" class="lp-btn" id="lp-admin-submit">' . esc_html__('Logg inn', 'lp-cargo') . '</button>';
+        echo '<span class="lp-admin-note" id="lp-admin-error" role="alert"></span>';
         echo '</div>';
         echo '</form>';
         echo '</div>';
+        echo '<div class="lp-admin-card lp-admin-search" id="lp-admin-search">';
+        echo '<h2 class="lp-admin-title">' . esc_html__('Ordresøk', 'lp-cargo') . '</h2>';
+        echo '<p class="lp-admin-sub">' . esc_html__('Søk på ordrenummer eller kundenavn. Viser åpne ordre sortert etter ordredato.', 'lp-cargo') . '</p>';
+        echo '<div class="lp-admin-toolbar">';
+        echo '<div style="flex:1 1 260px">';
+        echo '<label class="lp-label" for="lp-admin-query">' . esc_html__('Søk', 'lp-cargo') . '</label>';
+        echo '<input class="lp-input" type="search" id="lp-admin-query" name="lp-admin-query" placeholder="' . esc_attr__('Ordrenummer eller kundenavn', 'lp-cargo') . '" inputmode="search" autocomplete="off">';
         echo '</div>';
+        echo '</div>';
+        echo '<div class="lp-admin-status" id="lp-admin-status" aria-live="polite"></div>';
+        echo '<div class="lp-admin-results" id="lp-admin-results"></div>';
+        echo '</div>';
+        echo '</div>';
+        echo '<script>
+(function(){
+    const ajaxUrl = ' . json_encode($ajax_url) . ';
+    const loginCard = document.getElementById("lp-admin-login");
+    const searchCard = document.getElementById("lp-admin-search");
+    const loginBtn = document.getElementById("lp-admin-submit");
+    const usernameInput = document.getElementById("lp-admin-username");
+    const pinInput = document.getElementById("lp-admin-pin");
+    const rememberInput = document.getElementById("lp-admin-remember");
+    const statusEl = document.getElementById("lp-admin-status");
+    const resultsEl = document.getElementById("lp-admin-results");
+    const queryInput = document.getElementById("lp-admin-query");
+    const storageKey = "lpCargoAdminToken";
+    let sessionToken = null;
+    let activeController = null;
+    let debounceTimer = null;
+
+    const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg || ""; };
+    const setLoginError = (msg) => { const el = document.getElementById("lp-admin-error"); if (el) el.textContent = msg || ""; };
+    const showSearch = () => { if (loginCard) loginCard.classList.add("is-hidden"); if (searchCard) searchCard.classList.add("is-active"); if (queryInput) queryInput.focus(); };
+    const showLogin = () => { if (loginCard) loginCard.classList.remove("is-hidden"); if (searchCard) searchCard.classList.remove("is-active"); };
+
+    const post = async (action, data) => {
+        const form = new URLSearchParams();
+        form.append("action", action);
+        Object.keys(data).forEach((key) => form.append(key, data[key]));
+        const res = await fetch(ajaxUrl, {
+            method: "POST",
+            headers: {"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8"},
+            body: form.toString()
+        });
+        const json = await res.json();
+        if (!json || !json.success) {
+            throw new Error((json && json.data && json.data.msg) ? json.data.msg : "Noe gikk galt.");
+        }
+        return json.data || {};
+    };
+
+    const clearResults = () => { if (resultsEl) resultsEl.innerHTML = ""; };
+
+    const renderResults = (orders) => {
+        clearResults();
+        if (!resultsEl) return;
+        if (!orders.length) {
+            setStatus("Ingen åpne ordre funnet for dette søket.");
+            return;
+        }
+        setStatus(`Viser ${orders.length} åpne ordre.`);
+        orders.forEach((order) => {
+            const card = document.createElement("div");
+            card.className = "lp-admin-order";
+
+            const head = document.createElement("div");
+            head.className = "lp-admin-order-head";
+            const title = document.createElement("div");
+            title.className = "lp-admin-order-title";
+            title.textContent = `${order.customer_name} · #${order.number}`;
+            const date = document.createElement("div");
+            date.className = "lp-admin-order-date";
+            date.textContent = order.order_date || "";
+            head.appendChild(title);
+            head.appendChild(date);
+
+            const grid = document.createElement("div");
+            grid.className = "lp-admin-order-grid";
+
+            const productsRow = document.createElement("div");
+            productsRow.className = "lp-admin-order-row";
+            const productsLabel = document.createElement("div");
+            productsLabel.className = "lp-admin-order-label";
+            productsLabel.textContent = "Produkter";
+            const productsValue = document.createElement("div");
+            productsValue.className = "lp-admin-order-value lp-admin-products";
+            if (order.products && order.products.length) {
+                order.products.forEach((item) => {
+                    const line = document.createElement("div");
+                    line.textContent = `${item.name} × ${item.qty}`;
+                    productsValue.appendChild(line);
+                });
+            } else {
+                productsValue.textContent = "Ingen produkter funnet.";
+            }
+            productsRow.appendChild(productsLabel);
+            productsRow.appendChild(productsValue);
+            grid.appendChild(productsRow);
+
+            const addRow = (label, value) => {
+                const row = document.createElement("div");
+                row.className = "lp-admin-order-row";
+                const lab = document.createElement("div");
+                lab.className = "lp-admin-order-label";
+                lab.textContent = label;
+                const val = document.createElement("div");
+                val.className = "lp-admin-order-value";
+                val.textContent = value || "-";
+                row.appendChild(lab);
+                row.appendChild(val);
+                grid.appendChild(row);
+            };
+
+            addRow("Ordreverdi", order.order_value);
+            addRow("Fraktmetode", order.shipping_method);
+
+            card.appendChild(head);
+            card.appendChild(grid);
+            resultsEl.appendChild(card);
+        });
+    };
+
+    const runSearch = async (value) => {
+        if (!sessionToken) return;
+        const query = value.trim();
+        if (query.length < 2) {
+            clearResults();
+            setStatus("Skriv minst to tegn for å søke på ordrenummer eller kundenavn.");
+            return;
+        }
+        if (activeController) activeController.abort();
+        activeController = new AbortController();
+        setStatus("Søker...");
+        try {
+            const form = new URLSearchParams();
+            form.append("action", "lp_cargo_admin_search_orders");
+            form.append("token", sessionToken);
+            form.append("query", query);
+            const res = await fetch(ajaxUrl, {
+                method: "POST",
+                headers: {"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8"},
+                body: form.toString(),
+                signal: activeController.signal
+            });
+            const json = await res.json();
+            if (!json || !json.success) {
+                throw new Error((json && json.data && json.data.msg) ? json.data.msg : "Kunne ikke hente ordre.");
+            }
+            renderResults(json.data.orders || []);
+        } catch (err) {
+            if (err.name === "AbortError") return;
+            setStatus(err.message || "Kunne ikke hente ordre.");
+        }
+    };
+
+    const login = async () => {
+        setLoginError("");
+        const username = (usernameInput && usernameInput.value || "").trim();
+        const pin = (pinInput && pinInput.value || "").trim();
+        if (!username || !pin) {
+            setLoginError("Fyll inn brukernavn og PIN.");
+            return;
+        }
+        if (loginBtn) loginBtn.disabled = true;
+        try {
+            const data = await post("lp_cargo_admin_login", {username, pin});
+            sessionToken = data.token || null;
+            if (rememberInput && rememberInput.checked && sessionToken) {
+                localStorage.setItem(storageKey, sessionToken);
+            }
+            showSearch();
+            setStatus("Skriv inn et søk for å hente åpne ordre.");
+        } catch (err) {
+            setLoginError(err.message || "Ugyldig brukernavn eller PIN.");
+        } finally {
+            if (loginBtn) loginBtn.disabled = false;
+        }
+    };
+
+    const validateToken = async (token) => {
+        try {
+            await post("lp_cargo_admin_validate", {token});
+            sessionToken = token;
+            showSearch();
+            setStatus("Skriv inn et søk for å hente åpne ordre.");
+        } catch (err) {
+            localStorage.removeItem(storageKey);
+            showLogin();
+        }
+    };
+
+    if (loginBtn) {
+        loginBtn.addEventListener("click", (event) => {
+            event.preventDefault();
+            login();
+        });
+    }
+    if (pinInput) {
+        pinInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                login();
+            }
+        });
+    }
+    if (queryInput) {
+        queryInput.addEventListener("input", (event) => {
+            const value = event.target.value || "";
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => runSearch(value), 250);
+        });
+    }
+
+    const savedToken = localStorage.getItem(storageKey);
+    if (savedToken) {
+        validateToken(savedToken);
+    } else {
+        setStatus("Logg inn for å søke etter åpne ordre.");
+    }
+})();
+</script>';
 
         return ob_get_clean();
     }
