@@ -97,6 +97,17 @@ class LP_Cargonizer_Settings {
 
         // Support-epost, årsaker, bytte-info
         register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_SUPPORT_EMAIL, [ 'sanitize_callback' => 'sanitize_email' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_USERNAME, [ 'sanitize_callback' => 'sanitize_text_field' ] );
+        register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_ADMIN_PIN, [ 'sanitize_callback' => function ( $v ) {
+            $pin = preg_replace( '/\D/', '', (string) $v );
+            if ( $pin === '' ) {
+                return '';
+            }
+            if ( strlen( $pin ) !== 4 ) {
+                return get_option( LP_Cargonizer_Returns::OPT_ADMIN_PIN, '' );
+            }
+            return $pin;
+        } ] );
         register_setting( 'lp_cargo_settings', LP_Cargonizer_Returns::OPT_RETURN_REASONS, [ 'sanitize_callback' => function ( $v ) {
             if ( is_array( $v ) ) {
                 $lines = $v;
@@ -163,6 +174,12 @@ class LP_Cargonizer_Settings {
         if ( get_option( LP_Cargonizer_Returns::OPT_SUPPORT_EMAIL, '' ) === '' ) {
             update_option( LP_Cargonizer_Returns::OPT_SUPPORT_EMAIL, get_option( 'admin_email' ), true );
         }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_USERNAME, null ) === null ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_USERNAME, '', true );
+        }
+        if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_PIN, null ) === null ) {
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_PIN, '', true );
+        }
         if ( get_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, '' ) === '' ) {
             update_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, 'Ønsker du bytte? Vi dekker frakt på ny forsendelse.', true );
         }
@@ -196,6 +213,8 @@ class LP_Cargonizer_Settings {
         $labelV      = get_option( LP_Cargonizer_Returns::OPT_LABEL_VALID_DAYS, '14' );
         $labelR      = get_option( LP_Cargonizer_Returns::OPT_LABEL_RETENTION_DAYS, '30' );
         $support     = get_option( LP_Cargonizer_Returns::OPT_SUPPORT_EMAIL, get_option( 'admin_email' ) );
+        $admin_user  = get_option( LP_Cargonizer_Returns::OPT_ADMIN_USERNAME, '' );
+        $admin_pin   = get_option( LP_Cargonizer_Returns::OPT_ADMIN_PIN, '' );
         $reasons     = (array) get_option( LP_Cargonizer_Returns::OPT_RETURN_REASONS, [] );
         $exInfo      = get_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, '' );
 
@@ -232,6 +251,7 @@ class LP_Cargonizer_Settings {
         echo '<tr><th>Slett gamle labels</th><td><input type="number" name="' . LP_Cargonizer_Returns::OPT_LABEL_RETENTION_DAYS . '" value="' . esc_attr( $labelR ) . '" min="7" max="180" step="1" style="width:120px"> dager</td></tr>';
 
         echo '<tr><th>Support-epost</th><td><input type="email" name="' . LP_Cargonizer_Returns::OPT_SUPPORT_EMAIL . '" value="' . esc_attr( $support ) . '" style="width:320px"><p class="description">Vises til kunden i returportalen.</p></td></tr>';
+        echo '<tr><th>Admin-innlogging</th><td><label>Brukernavn <input type="text" name="' . LP_Cargonizer_Returns::OPT_ADMIN_USERNAME . '" value="' . esc_attr( $admin_user ) . '" style="width:240px"></label><br><label>PIN (4 siffer) <input type="password" name="' . LP_Cargonizer_Returns::OPT_ADMIN_PIN . '" value="' . esc_attr( $admin_pin ) . '" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" style="width:120px"></label><p class="description">Brukes på admin-innloggingssiden som er tilgjengelig i frontend.</p></td></tr>';
         echo '<tr><th>Årsaker</th><td><textarea name="' . LP_Cargonizer_Returns::OPT_RETURN_REASONS . '" rows="4" cols="40" style="width:320px">' . esc_textarea( implode( "\n", $reasons ) ) . '</textarea><p class="description">En per linje.</p></td></tr>';
         echo '<tr><th>Bytte-informasjon</th><td><textarea name="' . LP_Cargonizer_Returns::OPT_EXCHANGE_INFO . '" rows="3" cols="40" style="width:420px">' . esc_textarea( $exInfo ) . '</textarea><p class="description">Vises når kunde velger bytte.</p></td></tr>';
 

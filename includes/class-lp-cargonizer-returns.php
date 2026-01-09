@@ -78,6 +78,8 @@ final class LP_Cargonizer_Returns {
     const OPT_SUPPORT_EMAIL   = 'lp_cargo_support_email';
     const OPT_RETURN_REASONS  = 'lp_cargo_return_reasons';     // array
     const OPT_EXCHANGE_INFO   = 'lp_cargo_exchange_info_text'; // string
+    const OPT_ADMIN_USERNAME  = 'lp_cargo_admin_username';
+    const OPT_ADMIN_PIN       = 'lp_cargo_admin_pin';
 
     /* -------- Returlogg -------- */
     const LOG_DBVER           = 'lp_cargo_log_dbver';
@@ -206,6 +208,7 @@ final class LP_Cargonizer_Returns {
     /** Registrer shortcode tidlig – alltid */
     public function register_shortcode(){
         add_shortcode('cargonizer_returns', [$this,'render_shortcode']);
+        add_shortcode('cargonizer_admin_login', [$this,'render_admin_login_shortcode']);
     }
 
     /**
@@ -222,6 +225,9 @@ final class LP_Cargonizer_Returns {
         if (!$need && is_singular()) {
             global $post;
             if ($post && function_exists('has_shortcode') && has_shortcode((string)$post->post_content, 'cargonizer_returns')) {
+                $need = true;
+            }
+            if (!$need && $post && function_exists('has_shortcode') && has_shortcode((string)$post->post_content, 'cargonizer_admin_login')) {
                 $need = true;
             }
         }
@@ -375,6 +381,12 @@ final class LP_Cargonizer_Returns {
 .lp-input,.lp-select,textarea{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;font-size:16px;background:#fff}
 .lp-input:focus,.lp-select:focus,textarea:focus{outline:none;border-color:var(--lp-green);box-shadow:0 0 0 3px rgba(111,190,58,.15)}
 .lp-label{font-weight:700;margin-bottom:6px;display:block}
+.lp-admin-card{border:1px solid #e5e7eb;border-radius:16px;padding:20px;background:#fff;box-shadow:0 10px 25px rgba(15,23,42,.06)}
+.lp-admin-title{font-size:22px;font-weight:800;margin:0 0 6px}
+.lp-admin-sub{margin:0 0 18px;color:#64748b}
+.lp-admin-form{display:grid;gap:14px}
+.lp-admin-actions{display:flex;flex-direction:column;gap:10px}
+.lp-admin-note{font-size:13px;color:#6b7280}
 .lp-progress{display:flex;height:8px;background:#edf1ee;border-radius:999px;overflow:hidden}
 .lp-progress>span{display:block;background:var(--lp-green);width:0;transition:width .25s ease}
 .lp-help{color:#6b7280;font-size:14px}
@@ -396,6 +408,7 @@ final class LP_Cargonizer_Returns {
 .lp-sm-img img{width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid #e5e7eb;background:#fff}
 .lp-badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;border:1px solid #bfdbfe;background:#eff6ff;vertical-align:middle;margin-left:8px}
 @media(max-width:540px){.lp-btn-row{flex-direction:column}.lp-btn{width:100%}.lp-table-wrap{margin:0;padding:0}}
+@media(max-width:720px){.lp-admin-card{padding:16px}.lp-admin-title{font-size:20px}}
 CSS;
         $css = str_replace('%BGCOL%', esc_attr(get_option(self::OPT_FS_BANNER_COLOR,'#0ea5e9')), $css);
         wp_add_inline_style('lp-cargo-returns',$css);
@@ -453,6 +466,40 @@ CSS;
             $msg = $this->api_client->diagnose_http_error($code, '', $body);
             wp_send_json_error(['msg'=>$msg, 'code'=>$code], 500);
         }
+    }
+
+    public function render_admin_login_shortcode() {
+        if (!headers_sent()) {
+            nocache_headers();
+        }
+
+        $username_hint = get_option(self::OPT_ADMIN_USERNAME, '');
+        $username_placeholder = $username_hint !== '' ? $username_hint : __('Skriv inn brukernavn', 'lp-cargo');
+
+        ob_start();
+        echo '<div class="lp-wrap">';
+        echo '<div class="lp-admin-card">';
+        echo '<h2 class="lp-admin-title">' . esc_html__('Admin Login', 'lp-cargo') . '</h2>';
+        echo '<p class="lp-admin-sub">' . esc_html__('Denne innloggingssiden er klar for oppsett. Funksjonalitet kommer senere.', 'lp-cargo') . '</p>';
+        echo '<form class="lp-admin-form" autocomplete="off" novalidate>';
+        echo '<div>';
+        echo '<label class="lp-label" for="lp-admin-username">' . esc_html__('Brukernavn', 'lp-cargo') . '</label>';
+        echo '<input class="lp-input" type="text" id="lp-admin-username" name="lp-admin-username" inputmode="text" placeholder="' . esc_attr($username_placeholder) . '">';
+        echo '</div>';
+        echo '<div>';
+        echo '<label class="lp-label" for="lp-admin-pin">' . esc_html__('PIN-kode', 'lp-cargo') . '</label>';
+        echo '<input class="lp-input" type="password" id="lp-admin-pin" name="lp-admin-pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="' . esc_attr__('4 siffer', 'lp-cargo') . '" aria-describedby="lp-admin-pin-help">';
+        echo '<span class="lp-admin-note" id="lp-admin-pin-help">' . esc_html__('PIN må være 4 siffer. Ingen innlogging er aktiv ennå.', 'lp-cargo') . '</span>';
+        echo '</div>';
+        echo '<div class="lp-admin-actions">';
+        echo '<button type="button" class="lp-btn" disabled>' . esc_html__('Logg inn', 'lp-cargo') . '</button>';
+        echo '<span class="lp-admin-note">' . esc_html__('Tilgjengelig uten admin-innlogging. Koble til PIN senere i innstillinger.', 'lp-cargo') . '</span>';
+        echo '</div>';
+        echo '</form>';
+        echo '</div>';
+        echo '</div>';
+
+        return ob_get_clean();
     }
 
     public function render_shortcode(){
