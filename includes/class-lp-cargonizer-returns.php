@@ -40,6 +40,8 @@ final class LP_Cargonizer_Returns {
         $instance = self::instance();
         $instance->register_events();
         $instance->maybe_create_log_table();
+        $instance->register_admin_route();
+        flush_rewrite_rules();
     }
 
     /**
@@ -80,6 +82,15 @@ final class LP_Cargonizer_Returns {
     const OPT_EXCHANGE_INFO   = 'lp_cargo_exchange_info_text'; // string
     const OPT_ADMIN_USERNAME  = 'lp_cargo_admin_username';
     const OPT_ADMIN_PIN       = 'lp_cargo_admin_pin';
+    const OPT_ADMIN_PAGE_TITLE      = 'lp_cargo_admin_page_title';
+    const OPT_ADMIN_LOGIN_TITLE     = 'lp_cargo_admin_login_title';
+    const OPT_ADMIN_LOGIN_DESC      = 'lp_cargo_admin_login_desc';
+    const OPT_ADMIN_LOGIN_BUTTON    = 'lp_cargo_admin_login_button';
+    const OPT_ADMIN_SEARCH_TITLE    = 'lp_cargo_admin_search_title';
+    const OPT_ADMIN_SEARCH_DESC     = 'lp_cargo_admin_search_desc';
+    const OPT_ADMIN_SEARCH_PLACEHOLDER = 'lp_cargo_admin_search_placeholder';
+    const OPT_ADMIN_STATUS_PROMPT   = 'lp_cargo_admin_status_prompt';
+    const OPT_ADMIN_EMPTY_RESULTS   = 'lp_cargo_admin_empty_results';
 
     /* -------- Returlogg -------- */
     const LOG_DBVER           = 'lp_cargo_log_dbver';
@@ -88,6 +99,7 @@ final class LP_Cargonizer_Returns {
     /* -------- Misc -------- */
     const NONCE               = 'lp_cargo_rtn_nonce';
     const ENDPOINT_BASE       = 'https://api.cargonizer.no/';
+    const ADMIN_ROUTE_SLUG    = 'mottakretur';
 
     // Meta på ordre
     const META_LOCKED         = '_lp_return_portal_locked';
@@ -143,6 +155,9 @@ final class LP_Cargonizer_Returns {
 
         // **Fraktfri 24t – aktivering via GET-token** (må kjøres svært tidlig)
         add_action('init', [$this,'maybe_accept_fs_token'], 1);
+        add_action('init', [$this,'register_admin_route']);
+        add_filter('query_vars', [$this,'register_query_vars']);
+        add_filter('template_include', [$this,'admin_route_template']);
 
         // Admin
         if (is_admin()) {
@@ -240,6 +255,25 @@ final class LP_Cargonizer_Returns {
             }
         }
         if ($need) $this->enqueue_assets();
+    }
+
+    public function register_admin_route() {
+        add_rewrite_rule('^' . self::ADMIN_ROUTE_SLUG . '/?$', 'index.php?lp_cargo_admin=1', 'top');
+    }
+
+    public function register_query_vars($vars) {
+        $vars[] = 'lp_cargo_admin';
+        return $vars;
+    }
+
+    public function admin_route_template($template) {
+        if (get_query_var('lp_cargo_admin')) {
+            $custom = LP_CARGO_RETURN_PLUGIN_DIR . 'includes/admin-frontend-template.php';
+            if (file_exists($custom)) {
+                return $custom;
+            }
+        }
+        return $template;
     }
 
     /* ===================== Admin AJAX: avtaler/tjenester ===================== */
@@ -647,12 +681,20 @@ CSS;
         $username_hint = get_option(self::OPT_ADMIN_USERNAME, '');
         $username_placeholder = $username_hint !== '' ? $username_hint : __('Skriv inn brukernavn', 'lp-cargo');
         $ajax_url = admin_url('admin-ajax.php');
+        $login_title = get_option(self::OPT_ADMIN_LOGIN_TITLE, __('Admin Login', 'lp-cargo'));
+        $login_desc = get_option(self::OPT_ADMIN_LOGIN_DESC, __('Logg inn for å søke opp åpne ordre.', 'lp-cargo'));
+        $login_button = get_option(self::OPT_ADMIN_LOGIN_BUTTON, __('Logg inn', 'lp-cargo'));
+        $search_title = get_option(self::OPT_ADMIN_SEARCH_TITLE, __('Ordresøk', 'lp-cargo'));
+        $search_desc = get_option(self::OPT_ADMIN_SEARCH_DESC, __('Søk på ordrenummer eller kundenavn. Viser åpne ordre sortert etter ordredato.', 'lp-cargo'));
+        $search_placeholder = get_option(self::OPT_ADMIN_SEARCH_PLACEHOLDER, __('Ordrenummer eller kundenavn', 'lp-cargo'));
+        $status_prompt = get_option(self::OPT_ADMIN_STATUS_PROMPT, __('Logg inn for å søke etter åpne ordre.', 'lp-cargo'));
+        $empty_results = get_option(self::OPT_ADMIN_EMPTY_RESULTS, __('Ingen åpne ordre funnet for dette søket.', 'lp-cargo'));
 
         ob_start();
         echo '<div class="lp-wrap">';
         echo '<div class="lp-admin-card lp-admin-login" id="lp-admin-login">';
-        echo '<h2 class="lp-admin-title">' . esc_html__('Admin Login', 'lp-cargo') . '</h2>';
-        echo '<p class="lp-admin-sub">' . esc_html__('Logg inn for å søke opp åpne ordre.', 'lp-cargo') . '</p>';
+        echo '<h2 class="lp-admin-title">' . esc_html( $login_title ) . '</h2>';
+        echo '<p class="lp-admin-sub">' . esc_html( $login_desc ) . '</p>';
         echo '<form class="lp-admin-form" autocomplete="off" novalidate>';
         echo '<div>';
         echo '<label class="lp-label" for="lp-admin-username">' . esc_html__('Brukernavn', 'lp-cargo') . '</label>';
@@ -667,18 +709,18 @@ CSS;
         echo '<label class="lp-admin-note"><input type="checkbox" id="lp-admin-remember" checked> ' . esc_html__('Husk innlogging på denne enheten', 'lp-cargo') . '</label>';
         echo '</div>';
         echo '<div class="lp-admin-actions">';
-        echo '<button type="button" class="lp-btn" id="lp-admin-submit">' . esc_html__('Logg inn', 'lp-cargo') . '</button>';
+        echo '<button type="button" class="lp-btn" id="lp-admin-submit">' . esc_html( $login_button ) . '</button>';
         echo '<span class="lp-admin-note" id="lp-admin-error" role="alert"></span>';
         echo '</div>';
         echo '</form>';
         echo '</div>';
         echo '<div class="lp-admin-card lp-admin-search" id="lp-admin-search">';
-        echo '<h2 class="lp-admin-title">' . esc_html__('Ordresøk', 'lp-cargo') . '</h2>';
-        echo '<p class="lp-admin-sub">' . esc_html__('Søk på ordrenummer eller kundenavn. Viser åpne ordre sortert etter ordredato.', 'lp-cargo') . '</p>';
+        echo '<h2 class="lp-admin-title">' . esc_html( $search_title ) . '</h2>';
+        echo '<p class="lp-admin-sub">' . esc_html( $search_desc ) . '</p>';
         echo '<div class="lp-admin-toolbar">';
         echo '<div style="flex:1 1 260px">';
         echo '<label class="lp-label" for="lp-admin-query">' . esc_html__('Søk', 'lp-cargo') . '</label>';
-        echo '<input class="lp-input" type="search" id="lp-admin-query" name="lp-admin-query" placeholder="' . esc_attr__('Ordrenummer eller kundenavn', 'lp-cargo') . '" inputmode="search" autocomplete="off">';
+        echo '<input class="lp-input" type="search" id="lp-admin-query" name="lp-admin-query" placeholder="' . esc_attr( $search_placeholder ) . '" inputmode="search" autocomplete="off">';
         echo '</div>';
         echo '</div>';
         echo '<div class="lp-admin-status" id="lp-admin-status" aria-live="polite"></div>';
@@ -729,7 +771,7 @@ CSS;
         clearResults();
         if (!resultsEl) return;
         if (!orders.length) {
-            setStatus("Ingen åpne ordre funnet for dette søket.");
+            setStatus(' . json_encode( $empty_results ) . ');
             return;
         }
         setStatus(`Viser ${orders.length} åpne ordre.`);
@@ -889,7 +931,7 @@ CSS;
     if (savedToken) {
         validateToken(savedToken);
     } else {
-        setStatus("Logg inn for å søke etter åpne ordre.");
+        setStatus(' . json_encode( $status_prompt ) . ');
     }
 })();
 </script>';
