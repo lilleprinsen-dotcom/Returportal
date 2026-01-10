@@ -565,6 +565,9 @@ CSS;
         $this->refresh_admin_token($token);
 
         $query = trim(preg_replace('/\s+/', ' ', sanitize_text_field($_POST['query'] ?? '')));
+        if (strlen($query) > 100) {
+            $query = substr($query, 0, 100);
+        }
         if ($query === '') {
             wp_send_json_success(['orders'=>[]]);
         }
@@ -629,36 +632,9 @@ CSS;
         }
 
         if ($do_name_search) {
-            $terms = array_filter(preg_split('/\s+/', $query));
-            if (!$terms) {
-                $terms = [$query];
-            }
-
-            $name_meta_query = ['relation' => 'AND'];
-            foreach ($terms as $term) {
-                $name_meta_query[] = [
-                    'relation' => 'OR',
-                    [
-                        'key' => '_billing_first_name',
-                        'value' => $term,
-                        'compare' => 'LIKE',
-                    ],
-                    [
-                        'key' => '_billing_last_name',
-                        'value' => $term,
-                        'compare' => 'LIKE',
-                    ],
-                    [
-                        'key' => '_shipping_first_name',
-                        'value' => $term,
-                        'compare' => 'LIKE',
-                    ],
-                    [
-                        'key' => '_shipping_last_name',
-                        'value' => $term,
-                        'compare' => 'LIKE',
-                    ],
-                ];
+            $search_term = $query;
+            if (strpos($search_term, '*') === false) {
+                $search_term = '*' . $search_term . '*';
             }
 
             $name_matches = wc_get_orders([
@@ -666,7 +642,13 @@ CSS;
                 'limit' => $limit,
                 'orderby' => 'date',
                 'order' => 'DESC',
-                'meta_query' => $name_meta_query,
+                'search' => $search_term,
+                'search_columns' => [
+                    'billing_first_name',
+                    'billing_last_name',
+                    'shipping_first_name',
+                    'shipping_last_name',
+                ],
             ]);
 
             foreach ($name_matches as $order) {
