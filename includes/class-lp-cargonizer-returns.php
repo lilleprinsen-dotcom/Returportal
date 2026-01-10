@@ -183,6 +183,8 @@ final class LP_Cargonizer_Returns {
         add_action('wp_ajax_nopriv_lp_cargo_admin_validate', [$this,'ajax_admin_validate']);
         add_action('wp_ajax_lp_cargo_admin_search_orders', [$this,'ajax_admin_search_orders']);
         add_action('wp_ajax_nopriv_lp_cargo_admin_search_orders', [$this,'ajax_admin_search_orders']);
+        add_action('wp_ajax_lp_cargo_admin_order_details', [$this,'ajax_admin_order_details']);
+        add_action('wp_ajax_nopriv_lp_cargo_admin_order_details', [$this,'ajax_admin_order_details']);
 
         // Label-regen (signed token)
         add_action('wp_ajax_lp_cargo_regen_label',        [$this,'ajax_regen_label']);
@@ -462,12 +464,20 @@ final class LP_Cargonizer_Returns {
 .lp-admin-search.is-active{display:block}
 .lp-admin-toolbar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
 .lp-admin-toolbar .lp-input{min-width:240px}
-.lp-admin-results{display:grid;gap:12px;margin-top:16px}
-.lp-admin-order{border:1px solid #e5e7eb;border-radius:14px;padding:14px;background:#fff}
-.lp-admin-order-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.lp-admin-order-title{font-weight:800}
+.lp-admin-results{display:grid;gap:14px;margin-top:16px}
+.lp-admin-order{border:1px solid #e5e7eb;border-radius:16px;padding:16px;background:linear-gradient(140deg,#ffffff,#f8fafc);box-shadow:0 8px 24px rgba(15,23,42,.08);position:relative;overflow:hidden}
+.lp-admin-order:before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:linear-gradient(180deg,#38bdf8,#22c55e)}
+.lp-admin-order:nth-child(2n):before{background:linear-gradient(180deg,#a855f7,#6366f1)}
+.lp-admin-order-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.lp-admin-order-title{font-weight:800;font-size:16px}
 .lp-admin-order-date{color:#6b7280;font-size:13px}
-.lp-admin-order-grid{display:grid;gap:8px;margin-top:10px}
+.lp-admin-order-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.lp-admin-order-badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;background:#f8fafc;color:#0f172a}
+.lp-admin-order-badge.is-status{background:#ecfeff;border-color:#bae6fd;color:#0c4a6e}
+.lp-admin-order-actions{display:flex;gap:8px;flex-wrap:wrap}
+.lp-admin-order-toggle{border:1px solid #e2e8f0;background:#fff;color:#0f172a;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer;transition:all .2s ease}
+.lp-admin-order-toggle:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(15,23,42,.12)}
+.lp-admin-order-grid{display:grid;gap:10px;margin-top:12px}
 .lp-admin-order-row{display:grid;gap:4px}
 .lp-admin-order-label{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:700}
 .lp-admin-order-value{font-size:15px;color:#111827}
@@ -475,6 +485,19 @@ final class LP_Cargonizer_Returns {
 .lp-admin-status{font-size:13px;color:#6b7280}
 .lp-admin-login{display:block}
 .lp-admin-login.is-hidden{display:none}
+.lp-admin-order-detail{display:none;margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:12px}
+.lp-admin-order-detail.is-open{display:block}
+.lp-admin-detail-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.lp-admin-detail-card{border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#fff}
+.lp-admin-detail-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700;margin-bottom:6px}
+.lp-admin-detail-text{font-size:14px;color:#0f172a;word-break:break-word}
+.lp-admin-items{display:grid;gap:10px;margin-top:8px}
+.lp-admin-item{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fff}
+.lp-admin-item-img{width:56px;height:56px;border-radius:10px;object-fit:cover;border:1px solid #e2e8f0;background:#f8fafc}
+.lp-admin-item-name{font-weight:700;font-size:14px}
+.lp-admin-item-meta{font-size:12px;color:#64748b}
+.lp-admin-item-price{font-weight:700;font-size:14px;color:#0f172a;white-space:nowrap}
+.lp-admin-order-total{display:flex;justify-content:space-between;align-items:center;margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:12px;font-weight:800}
 .lp-progress{display:flex;height:8px;background:#edf1ee;border-radius:999px;overflow:hidden}
 .lp-progress>span{display:block;background:var(--lp-green);width:0;transition:width .25s ease}
 .lp-help{color:#6b7280;font-size:14px}
@@ -496,7 +519,7 @@ final class LP_Cargonizer_Returns {
 .lp-sm-img img{width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid #e5e7eb;background:#fff}
 .lp-badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;border:1px solid #bfdbfe;background:#eff6ff;vertical-align:middle;margin-left:8px}
 @media(max-width:540px){.lp-btn-row{flex-direction:column}.lp-btn{width:100%}.lp-table-wrap{margin:0;padding:0}}
-@media(max-width:720px){.lp-admin-card{padding:16px}.lp-admin-title{font-size:20px}.lp-admin-toolbar{flex-direction:column;align-items:stretch}}
+@media(max-width:720px){.lp-admin-card{padding:16px}.lp-admin-title{font-size:20px}.lp-admin-toolbar{flex-direction:column;align-items:stretch}.lp-admin-order-actions{width:100%}.lp-admin-order-toggle{width:100%;justify-content:center}.lp-admin-item{grid-template-columns:48px 1fr}}
 CSS;
         $css = str_replace('%BGCOL%', esc_attr(get_option(self::OPT_FS_BANNER_COLOR,'#0ea5e9')), $css);
         wp_add_inline_style('lp-cargo-returns',$css);
@@ -684,6 +707,8 @@ CSS;
                 $customer = __('Ukjent kunde', 'lp-cargo');
             }
             $date = $order->get_date_created();
+            $status_key = $order->get_status();
+            $status_label = wc_get_order_status_name('wc-' . $status_key);
             $data[] = [
                 'id' => $order->get_id(),
                 'number' => $order->get_order_number(),
@@ -692,10 +717,72 @@ CSS;
                 'order_date' => $date ? $date->date_i18n(get_option('date_format').' '.get_option('time_format')) : '',
                 'order_value' => wp_strip_all_tags(wc_price($order->get_total(), ['currency' => $order->get_currency()])),
                 'shipping_method' => $order->get_shipping_method() ?: __('Ikke valgt', 'lp-cargo'),
+                'status_key' => $status_key,
+                'status_label' => $status_label,
             ];
         }
 
         wp_send_json_success(['orders'=>$data]);
+    }
+
+    public function ajax_admin_order_details(){
+        if (!function_exists('wc_get_order')) wp_send_json_error(['msg'=>'WooCommerce kreves.'], 400);
+        $token = sanitize_text_field($_POST['token'] ?? '');
+        if (!$this->validate_admin_token($token)) {
+            wp_send_json_error(['msg'=>'Ugyldig sesjon.'], 403);
+        }
+        $this->refresh_admin_token($token);
+
+        $order_id = absint($_POST['order_id'] ?? 0);
+        if (!$order_id) {
+            wp_send_json_error(['msg'=>'Ugyldig ordre.'], 400);
+        }
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            wp_send_json_error(['msg'=>'Ordre ikke funnet.'], 404);
+        }
+
+        $items = [];
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            $image_id = $product ? $product->get_image_id() : 0;
+            $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'thumbnail') : wc_placeholder_img_src();
+            $qty = (int) $item->get_quantity();
+            $line_total = (float) $item->get_total();
+            $unit_price = $qty > 0 ? $line_total / $qty : $line_total;
+            $items[] = [
+                'name' => $item->get_name(),
+                'qty' => $qty,
+                'image' => $image_url,
+                'line_total' => wp_strip_all_tags(wc_price($line_total, ['currency' => $order->get_currency()])),
+                'unit_price' => wp_strip_all_tags(wc_price($unit_price, ['currency' => $order->get_currency()])),
+            ];
+        }
+
+        $status_key = $order->get_status();
+        $status_label = wc_get_order_status_name('wc-' . $status_key);
+        $date = $order->get_date_created();
+        $data = [
+            'id' => $order->get_id(),
+            'number' => $order->get_order_number(),
+            'status_key' => $status_key,
+            'status_label' => $status_label,
+            'order_date' => $date ? $date->date_i18n(get_option('date_format').' '.get_option('time_format')) : '',
+            'customer_name' => $order->get_formatted_billing_full_name() ?: $order->get_formatted_shipping_full_name(),
+            'customer_email' => $order->get_billing_email(),
+            'customer_phone' => $order->get_billing_phone(),
+            'billing_address' => $order->get_formatted_billing_address(),
+            'shipping_address' => $order->get_formatted_shipping_address(),
+            'payment_method' => $order->get_payment_method_title(),
+            'shipping_method' => $order->get_shipping_method() ?: __('Ikke valgt', 'lp-cargo'),
+            'order_total' => wp_strip_all_tags(wc_price($order->get_total(), ['currency' => $order->get_currency()])),
+            'order_subtotal' => wp_strip_all_tags(wc_price($order->get_subtotal(), ['currency' => $order->get_currency()])),
+            'order_tax' => wp_strip_all_tags(wc_price($order->get_total_tax(), ['currency' => $order->get_currency()])),
+            'shipping_total' => wp_strip_all_tags(wc_price($order->get_shipping_total(), ['currency' => $order->get_currency()])),
+            'items' => $items,
+        ];
+
+        wp_send_json_success(['order' => $data]);
     }
 
     public function ajax_test_api(){
@@ -811,6 +898,8 @@ CSS;
     let sessionToken = null;
     let activeController = null;
     let debounceTimer = null;
+    const detailsCache = new Map();
+    const baseUrl = window.location.href.split("#")[0];
 
     const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg || ""; };
     const setLoginError = (msg) => { const el = document.getElementById("lp-admin-error"); if (el) el.textContent = msg || ""; };
@@ -835,6 +924,129 @@ CSS;
 
     const clearResults = () => { if (resultsEl) resultsEl.innerHTML = ""; };
 
+    const renderDetailCard = (titleText, valueText, useHtml = false) => {
+        const card = document.createElement("div");
+        card.className = "lp-admin-detail-card";
+        const title = document.createElement("div");
+        title.className = "lp-admin-detail-title";
+        title.textContent = titleText;
+        const body = document.createElement("div");
+        body.className = "lp-admin-detail-text";
+        if (useHtml) {
+            body.innerHTML = valueText || "-";
+        } else {
+            body.textContent = valueText || "-";
+        }
+        card.appendChild(title);
+        card.appendChild(body);
+        return card;
+    };
+
+    const renderOrderDetails = (details, container) => {
+        container.innerHTML = "";
+        const grid = document.createElement("div");
+        grid.className = "lp-admin-detail-grid";
+        grid.appendChild(renderDetailCard("Status", details.status_label));
+        grid.appendChild(renderDetailCard("Bestilt", details.order_date));
+        grid.appendChild(renderDetailCard("Betaling", details.payment_method || "-"));
+        grid.appendChild(renderDetailCard("Frakt", details.shipping_method || "-"));
+        grid.appendChild(renderDetailCard("Subtotal", details.order_subtotal || "-"));
+        grid.appendChild(renderDetailCard("Fraktkostnad", details.shipping_total || "-"));
+        grid.appendChild(renderDetailCard("Mva", details.order_tax || "-"));
+        grid.appendChild(renderDetailCard("Kunde", details.customer_name || "-"));
+        grid.appendChild(renderDetailCard("E-post", details.customer_email || "-"));
+        grid.appendChild(renderDetailCard("Telefon", details.customer_phone || "-"));
+        grid.appendChild(renderDetailCard("Fakturaadresse", details.billing_address || "-", true));
+        grid.appendChild(renderDetailCard("Leveringsadresse", details.shipping_address || "-", true));
+        container.appendChild(grid);
+
+        const itemsWrap = document.createElement("div");
+        itemsWrap.className = "lp-admin-items";
+        if (details.items && details.items.length) {
+            details.items.forEach((item) => {
+                const row = document.createElement("div");
+                row.className = "lp-admin-item";
+                const img = document.createElement("img");
+                img.className = "lp-admin-item-img";
+                img.src = item.image || "";
+                img.alt = item.name || "";
+                const info = document.createElement("div");
+                const name = document.createElement("div");
+                name.className = "lp-admin-item-name";
+                name.textContent = item.name || "-";
+                const meta = document.createElement("div");
+                meta.className = "lp-admin-item-meta";
+                meta.textContent = `${item.qty} × ${item.unit_price}`;
+                info.appendChild(name);
+                info.appendChild(meta);
+                const price = document.createElement("div");
+                price.className = "lp-admin-item-price";
+                price.textContent = item.line_total || "-";
+                row.appendChild(img);
+                row.appendChild(info);
+                row.appendChild(price);
+                itemsWrap.appendChild(row);
+            });
+        } else {
+            const empty = document.createElement("div");
+            empty.className = "lp-admin-note";
+            empty.textContent = "Ingen produkter funnet.";
+            itemsWrap.appendChild(empty);
+        }
+        container.appendChild(itemsWrap);
+
+        const totals = document.createElement("div");
+        totals.className = "lp-admin-order-total";
+        const totalsLabel = document.createElement("div");
+        totalsLabel.textContent = "Ordretotal";
+        const totalsValue = document.createElement("div");
+        totalsValue.textContent = details.order_total || "-";
+        totals.appendChild(totalsLabel);
+        totals.appendChild(totalsValue);
+        container.appendChild(totals);
+    };
+
+    const toggleOrderDetail = async (orderId, button, detailEl, skipHistory = false) => {
+        if (!detailEl) return;
+        const isOpen = detailEl.classList.contains("is-open");
+        if (isOpen) {
+            detailEl.classList.remove("is-open");
+            button.textContent = "Åpne ordre";
+            if (!skipHistory) {
+                history.pushState({}, "", baseUrl);
+            }
+            return;
+        }
+        if (resultsEl) {
+            const openDetails = resultsEl.querySelectorAll(".lp-admin-order-detail.is-open");
+            openDetails.forEach((detail) => {
+                detail.classList.remove("is-open");
+                const btn = detail.parentElement ? detail.parentElement.querySelector(".lp-admin-order-toggle") : null;
+                if (btn) btn.textContent = "Åpne ordre";
+            });
+        }
+        detailEl.classList.add("is-open");
+        button.textContent = "Lukk ordre";
+        if (!skipHistory) {
+            history.pushState({orderId}, "", `${baseUrl}#order-${orderId}`);
+        }
+
+        if (detailsCache.has(orderId)) {
+            renderOrderDetails(detailsCache.get(orderId), detailEl);
+            return;
+        }
+        detailEl.innerHTML = "<div class=\"lp-admin-note\">Laster ordre...</div>";
+        try {
+            const data = await post("lp_cargo_admin_order_details", {token: sessionToken, order_id: orderId});
+            if (data && data.order) {
+                detailsCache.set(orderId, data.order);
+                renderOrderDetails(data.order, detailEl);
+            }
+        } catch (err) {
+            detailEl.innerHTML = "<div class=\"lp-admin-note\">Kunne ikke hente ordre.</div>";
+        }
+    };
+
     const renderResults = (orders) => {
         clearResults();
         if (!resultsEl) return;
@@ -855,8 +1067,37 @@ CSS;
             const date = document.createElement("div");
             date.className = "lp-admin-order-date";
             date.textContent = order.order_date || "";
+            const meta = document.createElement("div");
+            meta.className = "lp-admin-order-meta";
+            if (order.status_label) {
+                const statusBadge = document.createElement("div");
+                statusBadge.className = "lp-admin-order-badge is-status";
+                statusBadge.textContent = order.status_label;
+                meta.appendChild(statusBadge);
+            }
+            if (order.order_value) {
+                const totalBadge = document.createElement("div");
+                totalBadge.className = "lp-admin-order-badge";
+                totalBadge.textContent = `Total: ${order.order_value}`;
+                meta.appendChild(totalBadge);
+            }
+            if (order.shipping_method) {
+                const shipBadge = document.createElement("div");
+                shipBadge.className = "lp-admin-order-badge";
+                shipBadge.textContent = order.shipping_method;
+                meta.appendChild(shipBadge);
+            }
+
+            const actions = document.createElement("div");
+            actions.className = "lp-admin-order-actions";
+            const toggleBtn = document.createElement("button");
+            toggleBtn.type = "button";
+            toggleBtn.className = "lp-admin-order-toggle";
+            toggleBtn.textContent = "Åpne ordre";
+            actions.appendChild(toggleBtn);
             head.appendChild(title);
             head.appendChild(date);
+            head.appendChild(actions);
 
             const grid = document.createElement("div");
             grid.className = "lp-admin-order-grid";
@@ -898,9 +1139,17 @@ CSS;
             addRow("Ordreverdi", order.order_value);
             addRow("Fraktmetode", order.shipping_method);
 
+            const detail = document.createElement("div");
+            detail.className = "lp-admin-order-detail";
+            detail.setAttribute("data-order-id", order.id);
+
             card.appendChild(head);
+            card.appendChild(meta);
             card.appendChild(grid);
+            card.appendChild(detail);
             resultsEl.appendChild(card);
+
+            toggleBtn.addEventListener("click", () => toggleOrderDetail(order.id, toggleBtn, detail));
         });
     };
 
@@ -1006,6 +1255,24 @@ CSS;
             debounceTimer = setTimeout(() => runSearch(value), 250);
         });
     }
+
+    window.addEventListener("popstate", (event) => {
+        if (!resultsEl) return;
+        const stateOrderId = event.state && event.state.orderId ? event.state.orderId : null;
+        const openDetails = resultsEl.querySelectorAll(".lp-admin-order-detail.is-open");
+        openDetails.forEach((detail) => {
+            detail.classList.remove("is-open");
+            const btn = detail.parentElement ? detail.parentElement.querySelector(".lp-admin-order-toggle") : null;
+            if (btn) btn.textContent = "Åpne ordre";
+        });
+        if (stateOrderId) {
+            const targetDetail = resultsEl.querySelector(`.lp-admin-order-detail[data-order-id="${stateOrderId}"]`);
+            const targetBtn = targetDetail ? targetDetail.parentElement.querySelector(".lp-admin-order-toggle") : null;
+            if (targetDetail && targetBtn) {
+                toggleOrderDetail(stateOrderId, targetBtn, targetDetail, true);
+            }
+        }
+    });
 
     const savedToken = localStorage.getItem(storageKey);
     if (savedToken) {
