@@ -584,6 +584,24 @@ CSS;
             }
         }
 
+        $number_matches = wc_get_orders([
+            'status' => $statuses,
+            'limit' => $limit,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'meta_query' => [
+                [
+                    'key' => '_order_number',
+                    'value' => $query,
+                    'compare' => 'LIKE',
+                ],
+            ],
+        ]);
+
+        foreach ($number_matches as $order) {
+            $orders[$order->get_id()] = $order;
+        }
+
         if ($do_name_search) {
             $name_matches = wc_get_orders([
                 'status' => $statuses,
