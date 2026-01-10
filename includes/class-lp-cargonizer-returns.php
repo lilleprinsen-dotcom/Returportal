@@ -569,7 +569,16 @@ CSS;
             wp_send_json_success(['orders'=>[]]);
         }
 
-        $statuses = (array) apply_filters('lp_cargo_admin_open_statuses', ['processing','on-hold','pending']);
+        $default_statuses = array_keys(wc_get_order_statuses());
+        $default_statuses = array_map(function($status){
+            return preg_replace('/^wc-/', '', $status);
+        }, $default_statuses);
+        $statuses = (array) apply_filters('lp_cargo_admin_search_statuses', $default_statuses);
+        $statuses = (array) apply_filters('lp_cargo_admin_open_statuses', $statuses);
+        $statuses = array_values(array_filter(array_map('sanitize_key', $statuses)));
+        if (!$statuses) {
+            $statuses = $default_statuses;
+        }
         $limit = (int) apply_filters('lp_cargo_admin_search_limit', 50);
         $orders = [];
 
@@ -759,13 +768,13 @@ CSS;
         $username_placeholder = $username_hint !== '' ? $username_hint : __('Skriv inn brukernavn', 'lp-cargo');
         $ajax_url = admin_url('admin-ajax.php');
         $login_title = get_option(self::OPT_ADMIN_LOGIN_TITLE, __('Admin Login', 'lp-cargo'));
-        $login_desc = get_option(self::OPT_ADMIN_LOGIN_DESC, __('Logg inn for å søke opp åpne ordre.', 'lp-cargo'));
+        $login_desc = get_option(self::OPT_ADMIN_LOGIN_DESC, __('Logg inn for å søke opp ordre.', 'lp-cargo'));
         $login_button = get_option(self::OPT_ADMIN_LOGIN_BUTTON, __('Logg inn', 'lp-cargo'));
         $search_title = get_option(self::OPT_ADMIN_SEARCH_TITLE, __('Ordresøk', 'lp-cargo'));
-        $search_desc = get_option(self::OPT_ADMIN_SEARCH_DESC, __('Søk på ordrenummer eller kundenavn. Viser åpne ordre sortert etter ordredato.', 'lp-cargo'));
+        $search_desc = get_option(self::OPT_ADMIN_SEARCH_DESC, __('Søk på ordrenummer eller kundenavn. Viser ordre sortert etter ordredato.', 'lp-cargo'));
         $search_placeholder = get_option(self::OPT_ADMIN_SEARCH_PLACEHOLDER, __('Ordrenummer eller kundenavn', 'lp-cargo'));
-        $status_prompt = get_option(self::OPT_ADMIN_STATUS_PROMPT, __('Logg inn for å søke etter åpne ordre.', 'lp-cargo'));
-        $empty_results = get_option(self::OPT_ADMIN_EMPTY_RESULTS, __('Ingen åpne ordre funnet for dette søket.', 'lp-cargo'));
+        $status_prompt = get_option(self::OPT_ADMIN_STATUS_PROMPT, __('Logg inn for å søke etter ordre.', 'lp-cargo'));
+        $empty_results = get_option(self::OPT_ADMIN_EMPTY_RESULTS, __('Ingen ordre funnet for dette søket.', 'lp-cargo'));
 
         ob_start();
         echo '<div class="lp-wrap">';
@@ -851,7 +860,7 @@ CSS;
             setStatus(' . json_encode( $empty_results ) . ');
             return;
         }
-        setStatus(`Viser ${orders.length} åpne ordre.`);
+        setStatus(`Viser ${orders.length} ordre.`);
         orders.forEach((order) => {
             const card = document.createElement("div");
             card.className = "lp-admin-order";
@@ -974,7 +983,7 @@ CSS;
                 localStorage.setItem(storageKey, sessionToken);
             }
             showSearch();
-            setStatus("Skriv inn et søk for å hente åpne ordre.");
+            setStatus("Skriv inn et søk for å hente ordre.");
         } catch (err) {
             setLoginError(err.message || "Ugyldig brukernavn eller PIN.");
         } finally {
@@ -987,7 +996,7 @@ CSS;
             await post("lp_cargo_admin_validate", {token});
             sessionToken = token;
             showSearch();
-            setStatus("Skriv inn et søk for å hente åpne ordre.");
+            setStatus("Skriv inn et søk for å hente ordre.");
         } catch (err) {
             localStorage.removeItem(storageKey);
             showLogin();

@@ -196,7 +196,7 @@ class LP_Cargonizer_Settings {
             update_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_TITLE, 'Admin Login', true );
         }
         if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, '' ) === '' ) {
-            update_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, 'Logg inn for å søke opp åpne ordre.', true );
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, 'Logg inn for å søke opp ordre.', true );
         }
         if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_BUTTON, '' ) === '' ) {
             update_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_BUTTON, 'Logg inn', true );
@@ -205,16 +205,16 @@ class LP_Cargonizer_Settings {
             update_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_TITLE, 'Ordresøk', true );
         }
         if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, '' ) === '' ) {
-            update_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, 'Søk på ordrenummer eller kundenavn. Viser åpne ordre sortert etter ordredato.', true );
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, 'Søk på ordrenummer eller kundenavn. Viser ordre sortert etter ordredato.', true );
         }
         if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_PLACEHOLDER, '' ) === '' ) {
             update_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_PLACEHOLDER, 'Ordrenummer eller kundenavn', true );
         }
         if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, '' ) === '' ) {
-            update_option( LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, 'Logg inn for å søke etter åpne ordre.', true );
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, 'Logg inn for å søke etter ordre.', true );
         }
         if ( get_option( LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, '' ) === '' ) {
-            update_option( LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, 'Ingen åpne ordre funnet for dette søket.', true );
+            update_option( LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, 'Ingen ordre funnet for dette søket.', true );
         }
         if ( get_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, '' ) === '' ) {
             update_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, 'Ønsker du bytte? Vi dekker frakt på ny forsendelse.', true );
@@ -253,13 +253,13 @@ class LP_Cargonizer_Settings {
         $admin_pin   = get_option( LP_Cargonizer_Returns::OPT_ADMIN_PIN, '' );
         $admin_page_title = get_option( LP_Cargonizer_Returns::OPT_ADMIN_PAGE_TITLE, 'Returadmin' );
         $admin_login_title = get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_TITLE, 'Admin Login' );
-        $admin_login_desc = get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, 'Logg inn for å søke opp åpne ordre.' );
+        $admin_login_desc = get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_DESC, 'Logg inn for å søke opp ordre.' );
         $admin_login_button = get_option( LP_Cargonizer_Returns::OPT_ADMIN_LOGIN_BUTTON, 'Logg inn' );
         $admin_search_title = get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_TITLE, 'Ordresøk' );
-        $admin_search_desc = get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, 'Søk på ordrenummer eller kundenavn. Viser åpne ordre sortert etter ordredato.' );
+        $admin_search_desc = get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_DESC, 'Søk på ordrenummer eller kundenavn. Viser ordre sortert etter ordredato.' );
         $admin_search_placeholder = get_option( LP_Cargonizer_Returns::OPT_ADMIN_SEARCH_PLACEHOLDER, 'Ordrenummer eller kundenavn' );
-        $admin_status_prompt = get_option( LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, 'Logg inn for å søke etter åpne ordre.' );
-        $admin_empty_results = get_option( LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, 'Ingen åpne ordre funnet for dette søket.' );
+        $admin_status_prompt = get_option( LP_Cargonizer_Returns::OPT_ADMIN_STATUS_PROMPT, 'Logg inn for å søke etter ordre.' );
+        $admin_empty_results = get_option( LP_Cargonizer_Returns::OPT_ADMIN_EMPTY_RESULTS, 'Ingen ordre funnet for dette søket.' );
         $reasons     = (array) get_option( LP_Cargonizer_Returns::OPT_RETURN_REASONS, [] );
         $exInfo      = get_option( LP_Cargonizer_Returns::OPT_EXCHANGE_INFO, '' );
 
