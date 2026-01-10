@@ -201,6 +201,8 @@ final class LP_Cargonizer_Returns {
         add_action('init', [$this,'register_events']);
         add_action('lp_cargo_cleanup_labels',  [$this,'cron_cleanup_labels']);
         add_action('lp_cargo_warm_agreements', [$this,'cron_warm_agreements']);
+        add_action('init', [$this,'maybe_flush_rewrites']);
+        add_filter('request', [$this,'maybe_map_admin_route']);
 
         /** ✅ Alltid registrer returlogg-hook (flyttet ut av DB-opprettelsen) */
         add_action('lp_cargo_return_created', [$this,'log_return_created'], 10, 1);
@@ -259,6 +261,33 @@ final class LP_Cargonizer_Returns {
 
     public function register_admin_route() {
         add_rewrite_rule('^' . self::ADMIN_ROUTE_SLUG . '/?$', 'index.php?lp_cargo_admin=1', 'top');
+    }
+
+    public function maybe_map_admin_route($vars) {
+        if (is_admin()) {
+            return $vars;
+        }
+
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        $path = wp_parse_url($request_uri, PHP_URL_PATH);
+        $path = trim((string) $path, '/');
+
+        if ($path === self::ADMIN_ROUTE_SLUG) {
+            $vars['lp_cargo_admin'] = 1;
+        }
+
+        return $vars;
+    }
+
+    public function maybe_flush_rewrites() {
+        $stored_version = get_option('lp_cargo_return_version', '');
+        if ($stored_version === LP_CARGO_RETURN_VERSION) {
+            return;
+        }
+
+        $this->register_admin_route();
+        flush_rewrite_rules(false);
+        update_option('lp_cargo_return_version', LP_CARGO_RETURN_VERSION, false);
     }
 
     public function register_query_vars($vars) {
