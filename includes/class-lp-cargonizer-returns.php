@@ -564,7 +564,7 @@ CSS;
         }
         $this->refresh_admin_token($token);
 
-        $query = trim(sanitize_text_field($_POST['query'] ?? ''));
+        $query = trim(preg_replace('/\s+/', ' ', sanitize_text_field($_POST['query'] ?? '')));
         if ($query === '') {
             wp_send_json_success(['orders'=>[]]);
         }
@@ -573,6 +573,7 @@ CSS;
         $limit = (int) apply_filters('lp_cargo_admin_search_limit', 50);
         $orders = [];
 
+        $numeric_query = preg_replace('/\D+/', '', $query);
         $do_name_search = !ctype_digit($query);
         if (!$do_name_search) {
             $order_id = absint($query);
@@ -582,6 +583,28 @@ CSS;
                     $orders[$order->get_id()] = $order;
                 }
             }
+        } elseif ($numeric_query !== '') {
+            $order_id = absint($numeric_query);
+            if ($order_id) {
+                $order = wc_get_order($order_id);
+                if ($order && in_array($order->get_status(), $statuses, true)) {
+                    $orders[$order->get_id()] = $order;
+                }
+            }
+        }
+
+        $number_values = [$query];
+        if ($numeric_query !== '' && $numeric_query !== $query) {
+            $number_values[] = $numeric_query;
+        }
+
+        $number_meta_query = ['relation' => 'OR'];
+        foreach ($number_values as $number_value) {
+            $number_meta_query[] = [
+                'key' => '_order_number',
+                'value' => $number_value,
+                'compare' => 'LIKE',
+            ];
         }
 
         $number_matches = wc_get_orders([
@@ -589,13 +612,7 @@ CSS;
             'limit' => $limit,
             'orderby' => 'date',
             'order' => 'DESC',
-            'meta_query' => [
-                [
-                    'key' => '_order_number',
-                    'value' => $query,
-                    'compare' => 'LIKE',
-                ],
-            ],
+            'meta_query' => $number_meta_query,
         ]);
 
         foreach ($number_matches as $order) {
@@ -603,34 +620,44 @@ CSS;
         }
 
         if ($do_name_search) {
+            $terms = array_filter(preg_split('/\s+/', $query));
+            if (!$terms) {
+                $terms = [$query];
+            }
+
+            $name_meta_query = ['relation' => 'AND'];
+            foreach ($terms as $term) {
+                $name_meta_query[] = [
+                    'relation' => 'OR',
+                    [
+                        'key' => '_billing_first_name',
+                        'value' => $term,
+                        'compare' => 'LIKE',
+                    ],
+                    [
+                        'key' => '_billing_last_name',
+                        'value' => $term,
+                        'compare' => 'LIKE',
+                    ],
+                    [
+                        'key' => '_shipping_first_name',
+                        'value' => $term,
+                        'compare' => 'LIKE',
+                    ],
+                    [
+                        'key' => '_shipping_last_name',
+                        'value' => $term,
+                        'compare' => 'LIKE',
+                    ],
+                ];
+            }
+
             $name_matches = wc_get_orders([
                 'status' => $statuses,
                 'limit' => $limit,
                 'orderby' => 'date',
                 'order' => 'DESC',
-                'meta_query' => [
-                    'relation' => 'OR',
-                    [
-                        'key' => '_billing_first_name',
-                        'value' => $query,
-                        'compare' => 'LIKE',
-                    ],
-                    [
-                        'key' => '_billing_last_name',
-                        'value' => $query,
-                        'compare' => 'LIKE',
-                    ],
-                    [
-                        'key' => '_shipping_first_name',
-                        'value' => $query,
-                        'compare' => 'LIKE',
-                    ],
-                    [
-                        'key' => '_shipping_last_name',
-                        'value' => $query,
-                        'compare' => 'LIKE',
-                    ],
-                ],
+                'meta_query' => $name_meta_query,
             ]);
 
             foreach ($name_matches as $order) {
@@ -896,6 +923,11 @@ CSS;
         }
         if (activeController) activeController.abort();
         activeController = new AbortController();
+        let timedOut = false;
+        const timeoutId = window.setTimeout(() => {
+            timedOut = true;
+            if (activeController) activeController.abort();
+        }, 15000);
         setStatus("Søker...");
         try {
             const form = new URLSearchParams();
@@ -914,8 +946,15 @@ CSS;
             }
             renderResults(json.data.orders || []);
         } catch (err) {
-            if (err.name === "AbortError") return;
+            if (err.name === "AbortError") {
+                if (timedOut) {
+                    setStatus("Søket tok for lang tid. Prøv å spesifisere søket mer.");
+                }
+                return;
+            }
             setStatus(err.message || "Kunne ikke hente ordre.");
+        } finally {
+            window.clearTimeout(timeoutId);
         }
     };
 
