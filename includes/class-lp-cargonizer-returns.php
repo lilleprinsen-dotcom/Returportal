@@ -573,7 +573,8 @@ CSS;
         $limit = (int) apply_filters('lp_cargo_admin_search_limit', 50);
         $orders = [];
 
-        if (ctype_digit($query)) {
+        $do_name_search = !ctype_digit($query);
+        if (!$do_name_search) {
             $order_id = absint($query);
             if ($order_id) {
                 $order = wc_get_order($order_id);
@@ -583,38 +584,40 @@ CSS;
             }
         }
 
-        $name_matches = wc_get_orders([
-            'status' => $statuses,
-            'limit' => $limit,
-            'orderby' => 'date',
-            'order' => 'DESC',
-            'meta_query' => [
-                'relation' => 'OR',
-                [
-                    'key' => '_billing_first_name',
-                    'value' => $query,
-                    'compare' => 'LIKE',
+        if ($do_name_search) {
+            $name_matches = wc_get_orders([
+                'status' => $statuses,
+                'limit' => $limit,
+                'orderby' => 'date',
+                'order' => 'DESC',
+                'meta_query' => [
+                    'relation' => 'OR',
+                    [
+                        'key' => '_billing_first_name',
+                        'value' => $query,
+                        'compare' => 'LIKE',
+                    ],
+                    [
+                        'key' => '_billing_last_name',
+                        'value' => $query,
+                        'compare' => 'LIKE',
+                    ],
+                    [
+                        'key' => '_shipping_first_name',
+                        'value' => $query,
+                        'compare' => 'LIKE',
+                    ],
+                    [
+                        'key' => '_shipping_last_name',
+                        'value' => $query,
+                        'compare' => 'LIKE',
+                    ],
                 ],
-                [
-                    'key' => '_billing_last_name',
-                    'value' => $query,
-                    'compare' => 'LIKE',
-                ],
-                [
-                    'key' => '_shipping_first_name',
-                    'value' => $query,
-                    'compare' => 'LIKE',
-                ],
-                [
-                    'key' => '_shipping_last_name',
-                    'value' => $query,
-                    'compare' => 'LIKE',
-                ],
-            ],
-        ]);
+            ]);
 
-        foreach ($name_matches as $order) {
-            $orders[$order->get_id()] = $order;
+            foreach ($name_matches as $order) {
+                $orders[$order->get_id()] = $order;
+            }
         }
 
         $list = array_values($orders);
