@@ -465,15 +465,14 @@ final class LP_Cargonizer_Returns {
 .lp-admin-toolbar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
 .lp-admin-toolbar .lp-input{min-width:240px}
 .lp-admin-results{display:grid;gap:14px;margin-top:16px}
-.lp-admin-order{border:1px solid #e5e7eb;border-radius:16px;padding:16px;background:linear-gradient(140deg,#ffffff,#f8fafc);box-shadow:0 8px 24px rgba(15,23,42,.08);position:relative;overflow:hidden}
-.lp-admin-order:before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:linear-gradient(180deg,#38bdf8,#22c55e)}
-.lp-admin-order:nth-child(2n):before{background:linear-gradient(180deg,#a855f7,#6366f1)}
+.lp-admin-order{border:1px solid #e5e7eb;border-radius:16px;padding:16px;background:#fff;box-shadow:0 6px 20px rgba(15,23,42,.06);position:relative;overflow:hidden}
+.lp-admin-order:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#e2e8f0}
 .lp-admin-order-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}
 .lp-admin-order-title{font-weight:800;font-size:16px}
 .lp-admin-order-date{color:#6b7280;font-size:13px}
 .lp-admin-order-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .lp-admin-order-badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;background:#f8fafc;color:#0f172a}
-.lp-admin-order-badge.is-status{background:#ecfeff;border-color:#bae6fd;color:#0c4a6e}
+.lp-admin-order-badge.is-status{background:#f1f5f9;border-color:#e2e8f0;color:#0f172a}
 .lp-admin-order-actions{display:flex;gap:8px;flex-wrap:wrap}
 .lp-admin-order-toggle{border:1px solid #e2e8f0;background:#fff;color:#0f172a;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer;transition:all .2s ease}
 .lp-admin-order-toggle:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(15,23,42,.12)}
@@ -485,8 +484,13 @@ final class LP_Cargonizer_Returns {
 .lp-admin-status{font-size:13px;color:#6b7280}
 .lp-admin-login{display:block}
 .lp-admin-login.is-hidden{display:none}
-.lp-admin-order-detail{display:none;margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:12px}
-.lp-admin-order-detail.is-open{display:block}
+.lp-admin-order-detail{display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);padding:24px;z-index:9999;align-items:flex-start;justify-content:center;overflow:auto}
+.lp-admin-order-detail.is-open{display:flex}
+.lp-admin-detail-modal{width:100%;max-width:900px;background:#fff;border-radius:18px;box-shadow:0 20px 60px rgba(15,23,42,.24);overflow:hidden;border:1px solid #e2e8f0}
+.lp-admin-detail-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#f8fafc}
+.lp-admin-detail-heading{font-weight:800;font-size:16px;color:#0f172a}
+.lp-admin-detail-close{border:1px solid #e2e8f0;background:#fff;color:#0f172a;border-radius:10px;padding:6px 10px;font-weight:700;cursor:pointer}
+.lp-admin-detail-body{padding:18px 20px;display:grid;gap:16px;max-height:calc(100vh - 140px);overflow:auto}
 .lp-admin-detail-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 .lp-admin-detail-card{border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#fff}
 .lp-admin-detail-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700;margin-bottom:6px}
@@ -519,7 +523,7 @@ final class LP_Cargonizer_Returns {
 .lp-sm-img img{width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid #e5e7eb;background:#fff}
 .lp-badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;border:1px solid #bfdbfe;background:#eff6ff;vertical-align:middle;margin-left:8px}
 @media(max-width:540px){.lp-btn-row{flex-direction:column}.lp-btn{width:100%}.lp-table-wrap{margin:0;padding:0}}
-@media(max-width:720px){.lp-admin-card{padding:16px}.lp-admin-title{font-size:20px}.lp-admin-toolbar{flex-direction:column;align-items:stretch}.lp-admin-order-actions{width:100%}.lp-admin-order-toggle{width:100%;justify-content:center}.lp-admin-item{grid-template-columns:48px 1fr}}
+@media(max-width:720px){.lp-admin-card{padding:16px}.lp-admin-title{font-size:20px}.lp-admin-toolbar{flex-direction:column;align-items:stretch}.lp-admin-order-actions{width:100%}.lp-admin-order-toggle{width:100%;justify-content:center}.lp-admin-item{grid-template-columns:48px 1fr}.lp-admin-order-detail{padding:12px}.lp-admin-detail-body{padding:14px}}
 CSS;
         $css = str_replace('%BGCOL%', esc_attr(get_option(self::OPT_FS_BANNER_COLOR,'#0ea5e9')), $css);
         wp_add_inline_style('lp-cargo-returns',$css);
@@ -950,14 +954,13 @@ CSS;
         grid.appendChild(renderDetailCard("Bestilt", details.order_date));
         grid.appendChild(renderDetailCard("Betaling", details.payment_method || "-"));
         grid.appendChild(renderDetailCard("Frakt", details.shipping_method || "-"));
-        grid.appendChild(renderDetailCard("Subtotal", details.order_subtotal || "-"));
-        grid.appendChild(renderDetailCard("Fraktkostnad", details.shipping_total || "-"));
-        grid.appendChild(renderDetailCard("Mva", details.order_tax || "-"));
         grid.appendChild(renderDetailCard("Kunde", details.customer_name || "-"));
         grid.appendChild(renderDetailCard("E-post", details.customer_email || "-"));
         grid.appendChild(renderDetailCard("Telefon", details.customer_phone || "-"));
         grid.appendChild(renderDetailCard("Fakturaadresse", details.billing_address || "-", true));
         grid.appendChild(renderDetailCard("Leveringsadresse", details.shipping_address || "-", true));
+        grid.appendChild(renderDetailCard("Subtotal", details.order_subtotal || "-"));
+        grid.appendChild(renderDetailCard("Fraktkostnad", details.shipping_total || "-"));
         container.appendChild(grid);
 
         const itemsWrap = document.createElement("div");
@@ -1011,6 +1014,7 @@ CSS;
         const isOpen = detailEl.classList.contains("is-open");
         if (isOpen) {
             detailEl.classList.remove("is-open");
+            detailEl.setAttribute("aria-hidden", "true");
             button.textContent = "Åpne ordre";
             if (!skipHistory) {
                 history.pushState({}, "", baseUrl);
@@ -1021,29 +1025,32 @@ CSS;
             const openDetails = resultsEl.querySelectorAll(".lp-admin-order-detail.is-open");
             openDetails.forEach((detail) => {
                 detail.classList.remove("is-open");
+                detail.setAttribute("aria-hidden", "true");
                 const btn = detail.parentElement ? detail.parentElement.querySelector(".lp-admin-order-toggle") : null;
                 if (btn) btn.textContent = "Åpne ordre";
             });
         }
         detailEl.classList.add("is-open");
+        detailEl.setAttribute("aria-hidden", "false");
         button.textContent = "Lukk ordre";
         if (!skipHistory) {
             history.pushState({orderId}, "", `${baseUrl}#order-${orderId}`);
         }
+        const detailBody = detailEl.querySelector(".lp-admin-detail-body") || detailEl;
 
         if (detailsCache.has(orderId)) {
-            renderOrderDetails(detailsCache.get(orderId), detailEl);
+            renderOrderDetails(detailsCache.get(orderId), detailBody);
             return;
         }
-        detailEl.innerHTML = "<div class=\"lp-admin-note\">Laster ordre...</div>";
+        detailBody.innerHTML = "<div class=\"lp-admin-note\">Laster ordre...</div>";
         try {
             const data = await post("lp_cargo_admin_order_details", {token: sessionToken, order_id: orderId});
             if (data && data.order) {
                 detailsCache.set(orderId, data.order);
-                renderOrderDetails(data.order, detailEl);
+                renderOrderDetails(data.order, detailBody);
             }
         } catch (err) {
-            detailEl.innerHTML = "<div class=\"lp-admin-note\">Kunne ikke hente ordre.</div>";
+            detailBody.innerHTML = "<div class=\"lp-admin-note\">Kunne ikke hente ordre.</div>";
         }
     };
 
@@ -1142,6 +1149,31 @@ CSS;
             const detail = document.createElement("div");
             detail.className = "lp-admin-order-detail";
             detail.setAttribute("data-order-id", order.id);
+            detail.setAttribute("aria-hidden", "true");
+            const modal = document.createElement("div");
+            modal.className = "lp-admin-detail-modal";
+            const modalHead = document.createElement("div");
+            modalHead.className = "lp-admin-detail-head";
+            const modalTitle = document.createElement("div");
+            modalTitle.className = "lp-admin-detail-heading";
+            modalTitle.textContent = `Ordre #${order.number}`;
+            const closeBtn = document.createElement("button");
+            closeBtn.type = "button";
+            closeBtn.className = "lp-admin-detail-close";
+            closeBtn.textContent = "Lukk";
+            closeBtn.addEventListener("click", () => toggleOrderDetail(order.id, toggleBtn, detail));
+            modalHead.appendChild(modalTitle);
+            modalHead.appendChild(closeBtn);
+            const modalBody = document.createElement("div");
+            modalBody.className = "lp-admin-detail-body";
+            modal.appendChild(modalHead);
+            modal.appendChild(modalBody);
+            detail.appendChild(modal);
+            detail.addEventListener("click", (event) => {
+                if (event.target === detail) {
+                    toggleOrderDetail(order.id, toggleBtn, detail);
+                }
+            });
 
             card.appendChild(head);
             card.appendChild(meta);
@@ -1262,6 +1294,7 @@ CSS;
         const openDetails = resultsEl.querySelectorAll(".lp-admin-order-detail.is-open");
         openDetails.forEach((detail) => {
             detail.classList.remove("is-open");
+            detail.setAttribute("aria-hidden", "true");
             const btn = detail.parentElement ? detail.parentElement.querySelector(".lp-admin-order-toggle") : null;
             if (btn) btn.textContent = "Åpne ordre";
         });
