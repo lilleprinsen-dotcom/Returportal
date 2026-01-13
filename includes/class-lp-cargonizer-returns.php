@@ -205,9 +205,26 @@ final class LP_Cargonizer_Returns {
         add_action('lp_cargo_warm_agreements', [$this,'cron_warm_agreements']);
         add_action('init', [$this,'maybe_flush_rewrites']);
         add_filter('request', [$this,'maybe_map_admin_route']);
+        add_action('init', [$this,'register_purchase_order_post_type']);
 
         /** ✅ Alltid registrer returlogg-hook (flyttet ut av DB-opprettelsen) */
         add_action('lp_cargo_return_created', [$this,'log_return_created'], 10, 1);
+    }
+
+    public function register_purchase_order_post_type() {
+        register_post_type('lp_purchase_order', [
+            'labels' => [
+                'name'          => 'Purchase Orders',
+                'singular_name' => 'Purchase Order',
+                'menu_name'     => 'Purchase Orders',
+            ],
+            'public'       => false,
+            'show_ui'      => true,
+            'show_in_menu' => 'lp-cargo-returns',
+            'supports'     => ['title'],
+            'has_archive'  => false,
+            'rewrite'      => false,
+        ]);
     }
 
     /**
