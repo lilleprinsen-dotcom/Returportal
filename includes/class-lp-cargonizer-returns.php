@@ -473,6 +473,7 @@ final class LP_Cargonizer_Returns {
 .lp-admin-order-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .lp-admin-order-badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;background:#f8fafc;color:#0f172a}
 .lp-admin-order-badge.is-status{background:#f1f5f9;border-color:#e2e8f0;color:#0f172a}
+.lp-admin-order-badge.is-return{background:#ecfdf3;border-color:#86efac;color:#166534}
 .lp-admin-order-actions{display:flex;gap:8px;flex-wrap:wrap}
 .lp-admin-order-toggle{border:1px solid #e2e8f0;background:#fff;color:#0f172a;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer;transition:all .2s ease}
 .lp-admin-order-toggle:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(15,23,42,.12)}
@@ -481,6 +482,8 @@ final class LP_Cargonizer_Returns {
 .lp-admin-order-label{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:700}
 .lp-admin-order-value{font-size:15px;color:#111827}
 .lp-admin-products{display:grid;gap:4px}
+.lp-admin-return-list{display:grid;gap:4px}
+.lp-admin-return-line{font-size:14px}
 .lp-admin-status{font-size:13px;color:#6b7280}
 .lp-admin-login{display:block}
 .lp-admin-login.is-hidden{display:none}
@@ -495,6 +498,7 @@ final class LP_Cargonizer_Returns {
 .lp-admin-detail-card{border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#fff}
 .lp-admin-detail-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700;margin-bottom:6px}
 .lp-admin-detail-text{font-size:14px;color:#0f172a;word-break:break-word}
+.lp-admin-detail-text a{color:#0f172a;text-decoration:underline}
 .lp-admin-items{display:grid;gap:10px;margin-top:8px}
 .lp-admin-item{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fff}
 .lp-admin-item-img{width:56px;height:56px;border-radius:10px;object-fit:cover;border:1px solid #e2e8f0;background:#f8fafc}
@@ -502,6 +506,10 @@ final class LP_Cargonizer_Returns {
 .lp-admin-item-meta{font-size:12px;color:#64748b}
 .lp-admin-item-price{font-weight:700;font-size:14px;color:#0f172a;white-space:nowrap}
 .lp-admin-order-total{display:flex;justify-content:space-between;align-items:center;margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:12px;font-weight:800}
+.lp-admin-return{border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#f8fafc;display:grid;gap:12px}
+.lp-admin-return-title{font-weight:800;font-size:15px;color:#0f172a}
+.lp-admin-return-items{display:grid;gap:6px}
+.lp-admin-return-items .lp-admin-return-line{font-size:14px;color:#111827}
 .lp-progress{display:flex;height:8px;background:#edf1ee;border-radius:999px;overflow:hidden}
 .lp-progress>span{display:block;background:var(--lp-green);width:0;transition:width .25s ease}
 .lp-help{color:#6b7280;font-size:14px}
@@ -552,6 +560,15 @@ CSS;
     private function validate_admin_token($token){
         if (!$token) return false;
         return (bool) get_transient($this->admin_token_key($token));
+    }
+
+    private function get_return_log_entry($order_id){
+        global $wpdb;
+        $table = $wpdb->prefix . self::LOG_TABLE;
+        return $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM $table WHERE order_id = %d ORDER BY created DESC LIMIT 1", (int) $order_id),
+            ARRAY_A
+        );
     }
 
     public function ajax_admin_login(){
@@ -697,7 +714,19 @@ CSS;
         $data = [];
         foreach ($list as $order) {
             $items = [];
+            $return_items = [];
+            $returned_map = (array) $order->get_meta(self::META_RETURNED_QTY);
+            $return_total = 0;
             foreach ($order->get_items() as $item) {
+                $item_id = $item->get_id();
+                $returned_qty = (int) ($returned_map[$item_id] ?? 0);
+                if ($returned_qty > 0) {
+                    $return_items[] = [
+                        'name' => $item->get_name(),
+                        'qty' => $returned_qty,
+                    ];
+                    $return_total += $returned_qty;
+                }
                 $items[] = [
                     'name' => $item->get_name(),
                     'qty' => $item->get_quantity(),
@@ -713,11 +742,16 @@ CSS;
             $date = $order->get_date_created();
             $status_key = $order->get_status();
             $status_label = wc_get_order_status_name('wc-' . $status_key);
+            $created_ts = (int) $order->get_meta(self::META_CREATED_TS);
+            $return_registered = ($return_total > 0 || $created_ts > 0);
             $data[] = [
                 'id' => $order->get_id(),
                 'number' => $order->get_order_number(),
                 'customer_name' => $customer,
                 'products' => $items,
+                'return_items' => $return_items,
+                'return_total' => $return_total,
+                'return_registered' => $return_registered,
                 'order_date' => $date ? $date->date_i18n(get_option('date_format').' '.get_option('time_format')) : '',
                 'order_value' => wp_strip_all_tags(wc_price($order->get_total(), ['currency' => $order->get_currency()])),
                 'shipping_method' => $order->get_shipping_method() ?: __('Ikke valgt', 'lp-cargo'),
@@ -747,16 +781,29 @@ CSS;
         }
 
         $items = [];
+        $returned_map = (array) $order->get_meta(self::META_RETURNED_QTY);
+        $return_items = [];
+        $return_total = 0;
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
             $image_id = $product ? $product->get_image_id() : 0;
             $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'thumbnail') : wc_placeholder_img_src();
             $qty = (int) $item->get_quantity();
+            $item_id = $item->get_id();
+            $returned_qty = (int) ($returned_map[$item_id] ?? 0);
             $line_total = (float) $item->get_total();
             $unit_price = $qty > 0 ? $line_total / $qty : $line_total;
+            if ($returned_qty > 0) {
+                $return_items[] = [
+                    'name' => $item->get_name(),
+                    'qty' => $returned_qty,
+                ];
+                $return_total += $returned_qty;
+            }
             $items[] = [
                 'name' => $item->get_name(),
                 'qty' => $qty,
+                'returned_qty' => $returned_qty,
                 'image' => $image_url,
                 'line_total' => wp_strip_all_tags(wc_price($line_total, ['currency' => $order->get_currency()])),
                 'unit_price' => wp_strip_all_tags(wc_price($unit_price, ['currency' => $order->get_currency()])),
@@ -766,6 +813,17 @@ CSS;
         $status_key = $order->get_status();
         $status_label = wc_get_order_status_name('wc-' . $status_key);
         $date = $order->get_date_created();
+        $return_created_ts = (int) $order->get_meta(self::META_CREATED_TS);
+        $return_reason = (string) $order->get_meta(self::META_RETURN_REASON);
+        $return_refund_method = (string) $order->get_meta(self::META_REFUND_METHOD);
+        $return_parcel_size = (string) $order->get_meta(self::META_PARCEL_SIZE);
+        $return_carrier = (string) $order->get_meta('_lp_carrier_group');
+        $return_label = (string) ($order->get_meta(self::META_LABEL_PUBLIC) ?: $order->get_meta(self::META_LABEL_PRIVATE));
+        $log_entry = $this->get_return_log_entry($order_id);
+        $tracking_url = $log_entry['tracking_url'] ?? '';
+        $return_notes = $log_entry['notes'] ?? '';
+        $estimated_refund = (float) $order->get_meta('_lp_estimated_refund');
+        $return_registered = ($return_total > 0 || $return_created_ts > 0);
         $data = [
             'id' => $order->get_id(),
             'number' => $order->get_order_number(),
@@ -784,6 +842,20 @@ CSS;
             'order_tax' => wp_strip_all_tags(wc_price($order->get_total_tax(), ['currency' => $order->get_currency()])),
             'shipping_total' => wp_strip_all_tags(wc_price($order->get_shipping_total(), ['currency' => $order->get_currency()])),
             'items' => $items,
+            'return' => [
+                'registered' => $return_registered,
+                'items_total' => $return_total,
+                'items' => $return_items,
+                'created' => $return_created_ts ? date_i18n(get_option('date_format').' '.get_option('time_format'), $return_created_ts) : '',
+                'reason' => $return_reason,
+                'refund_method' => $return_refund_method ? $this->refund_label($return_refund_method) : '',
+                'parcel_size' => $return_parcel_size,
+                'carrier' => $return_carrier,
+                'label_url' => esc_url_raw($return_label),
+                'tracking_url' => esc_url_raw($tracking_url),
+                'notes' => $return_notes,
+                'estimated_refund' => $estimated_refund > 0 ? wp_strip_all_tags(wc_price($estimated_refund, ['currency' => $order->get_currency()])) : '',
+            ],
         ];
 
         wp_send_json_success(['order' => $data]);
@@ -946,6 +1018,29 @@ CSS;
         return card;
     };
 
+    const renderDetailLinkCard = (titleText, url, labelText) => {
+        const card = document.createElement("div");
+        card.className = "lp-admin-detail-card";
+        const title = document.createElement("div");
+        title.className = "lp-admin-detail-title";
+        title.textContent = titleText;
+        const body = document.createElement("div");
+        body.className = "lp-admin-detail-text";
+        if (url) {
+            const link = document.createElement("a");
+            link.href = url;
+            link.target = "_blank";
+            link.rel = "noopener";
+            link.textContent = labelText || url;
+            body.appendChild(link);
+        } else {
+            body.textContent = "-";
+        }
+        card.appendChild(title);
+        card.appendChild(body);
+        return card;
+    };
+
     const renderOrderDetails = (details, container) => {
         container.innerHTML = "";
         const grid = document.createElement("div");
@@ -963,6 +1058,56 @@ CSS;
         grid.appendChild(renderDetailCard("Fraktkostnad", details.shipping_total || "-"));
         container.appendChild(grid);
 
+        const returnInfo = details.return || {};
+        const returnSection = document.createElement("div");
+        returnSection.className = "lp-admin-return";
+        const returnTitle = document.createElement("div");
+        returnTitle.className = "lp-admin-return-title";
+        returnTitle.textContent = "Retur";
+        returnSection.appendChild(returnTitle);
+        if (!returnInfo.registered) {
+            const empty = document.createElement("div");
+            empty.className = "lp-admin-note";
+            empty.textContent = "Ingen retur registrert.";
+            returnSection.appendChild(empty);
+        } else {
+            const returnGrid = document.createElement("div");
+            returnGrid.className = "lp-admin-detail-grid";
+            returnGrid.appendChild(renderDetailCard("Registrert", returnInfo.created || "Ja"));
+            returnGrid.appendChild(renderDetailCard("Antall returnerte varer", returnInfo.items_total ? `${returnInfo.items_total} stk` : "-"));
+            returnGrid.appendChild(renderDetailCard("Returårsak", returnInfo.reason || "-"));
+            returnGrid.appendChild(renderDetailCard("Refusjon", returnInfo.refund_method || "-"));
+            returnGrid.appendChild(renderDetailCard("Pakkestørrelse", returnInfo.parcel_size || "-"));
+            returnGrid.appendChild(renderDetailCard("Transportør", returnInfo.carrier || "-"));
+            if (returnInfo.estimated_refund) {
+                returnGrid.appendChild(renderDetailCard("Estimert refusjon", returnInfo.estimated_refund));
+            }
+            returnGrid.appendChild(renderDetailLinkCard("Returetikett", returnInfo.label_url, "Åpne etikett"));
+            returnGrid.appendChild(renderDetailLinkCard("Sporing", returnInfo.tracking_url, "Åpne sporing"));
+            if (returnInfo.notes) {
+                returnGrid.appendChild(renderDetailCard("Notat", returnInfo.notes));
+            }
+            returnSection.appendChild(returnGrid);
+
+            const returnItems = document.createElement("div");
+            returnItems.className = "lp-admin-return-items";
+            if (returnInfo.items && returnInfo.items.length) {
+                returnInfo.items.forEach((item) => {
+                    const line = document.createElement("div");
+                    line.className = "lp-admin-return-line";
+                    line.textContent = `${item.name} × ${item.qty}`;
+                    returnItems.appendChild(line);
+                });
+            } else {
+                const emptyReturnItems = document.createElement("div");
+                emptyReturnItems.className = "lp-admin-note";
+                emptyReturnItems.textContent = "Ingen varer er markert som returnert.";
+                returnItems.appendChild(emptyReturnItems);
+            }
+            returnSection.appendChild(returnItems);
+        }
+        container.appendChild(returnSection);
+
         const itemsWrap = document.createElement("div");
         itemsWrap.className = "lp-admin-items";
         if (details.items && details.items.length) {
@@ -979,7 +1124,11 @@ CSS;
                 name.textContent = item.name || "-";
                 const meta = document.createElement("div");
                 meta.className = "lp-admin-item-meta";
-                meta.textContent = `${item.qty} × ${item.unit_price}`;
+                const metaParts = [`${item.qty} × ${item.unit_price}`];
+                if (item.returned_qty && item.returned_qty > 0) {
+                    metaParts.push(`Returnert: ${item.returned_qty}`);
+                }
+                meta.textContent = metaParts.join(" · ");
                 info.appendChild(name);
                 info.appendChild(meta);
                 const price = document.createElement("div");
@@ -1082,6 +1231,12 @@ CSS;
                 statusBadge.textContent = order.status_label;
                 meta.appendChild(statusBadge);
             }
+            if (order.return_registered) {
+                const returnBadge = document.createElement("div");
+                returnBadge.className = "lp-admin-order-badge is-return";
+                returnBadge.textContent = order.return_total > 0 ? `Retur: ${order.return_total} varer` : "Retur registrert";
+                meta.appendChild(returnBadge);
+            }
             if (order.order_value) {
                 const totalBadge = document.createElement("div");
                 totalBadge.className = "lp-admin-order-badge";
@@ -1145,6 +1300,30 @@ CSS;
 
             addRow("Ordreverdi", order.order_value);
             addRow("Fraktmetode", order.shipping_method);
+
+            const returnRow = document.createElement("div");
+            returnRow.className = "lp-admin-order-row";
+            const returnLabel = document.createElement("div");
+            returnLabel.className = "lp-admin-order-label";
+            returnLabel.textContent = "Retur";
+            const returnValue = document.createElement("div");
+            returnValue.className = "lp-admin-order-value";
+            if (order.return_items && order.return_items.length) {
+                const list = document.createElement("div");
+                list.className = "lp-admin-return-list";
+                order.return_items.forEach((item) => {
+                    const line = document.createElement("div");
+                    line.className = "lp-admin-return-line";
+                    line.textContent = `${item.name} × ${item.qty}`;
+                    list.appendChild(line);
+                });
+                returnValue.appendChild(list);
+            } else {
+                returnValue.textContent = "Ingen retur registrert.";
+            }
+            returnRow.appendChild(returnLabel);
+            returnRow.appendChild(returnValue);
+            grid.appendChild(returnRow);
 
             const detail = document.createElement("div");
             detail.className = "lp-admin-order-detail";
